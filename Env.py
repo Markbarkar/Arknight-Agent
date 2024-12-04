@@ -8,6 +8,9 @@ from gym.core import ObsType, RenderFrame
 from enum import Enum
 from time import sleep
 from torch import Tensor
+from ultralytics import YOLO
+
+from screenshot import Cutter
 
 
 class ArknightEnv(Env):
@@ -96,6 +99,9 @@ class ArknightEnv(Env):
         # 部署费用
         self.fee = 99
 
+        # 视觉处理
+        self.cutter = Cutter()
+
         # 在场干员列表
         # self.position_list = [{'id': '桃金娘', 'position': (1,2), 'ditection': 'DOWN'}]
         self.position_list = []
@@ -120,8 +126,11 @@ class ArknightEnv(Env):
         # 指的是离散值，即观察空间有多大，值的取值范围是多少【部署费用， 在场敌人数， 保卫点数】
         self.observation_space = spaces.MultiDiscrete([99, 20, 4])
 
-    def update(self, fee ):
-        pass
+    def update(self):
+        # self.cutter.image_stream_enemy_detect(Cutter.ScreenType.PC)
+        self.fee = self.cutter.image_number_detect(Cutter.ScreenType.PC)
+        self.enemy = self.cutter.enemy_detect(YOLO("model/train3.pt"), Cutter.ScreenType.PC)
+        self.point = self.cutter
 
     # 可视化处理
     def render(self) -> Optional[Union[RenderFrame, List[RenderFrame]]]:
@@ -130,21 +139,21 @@ class ArknightEnv(Env):
     # 根据输入动作进行推演，返回observation, reward, terminated, truncated, info
     def step(self, action: Tensor) -> Tuple[Tensor, float, bool, bool, dict]:
 
-        # TODO:完善step步骤
-        # if action[0] == 0:
-        #     self.place(self.player_list[action[1]], self.position_location_list[action[2]], 0.7, self.DirectionType(action[3]))
-        #     pass
-        # elif action[0] == 1:
-        #     self.skill(self.player_list[action[1]])
-        # else:
-        #     self.remove(self.player_list[action[1]])
+        # TODO:完善step步骤, 添加检测,包括费用不足/干员已放置/干员未放置/地块已放置/地块不可放置
+        if type == 0:
+            self.place(self.player_list[action[0]], self.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
+        elif type == 1:
+            self.skill(self.player_list[action[0]])
+        elif type == 2:
+            self.remove(self.player_list[action[0]])
 
-
-        # 下一个state
+        # 下一个state【部署费用， 在场敌人数， 保卫点数】
+        # state = torch.tensor([self.fee, self.enemy, self.point])
         state = torch.rand((3, ),) * torch.tensor([10, 3, 3])
         state = state.round().int()
         reward = -1.0 + random.random() * 2
         done = True
+
         truncated = False
         info = {}
         return state, reward, done, truncated, info

@@ -46,15 +46,7 @@ for i in range(10):
             done = False
             while not done:
                 action, type = agent.take_action(state, env.output_dic())
-                # TODO:添加检测
-                if type == 0:
-                    env.place(env.player_list[action[0]], env.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
-                elif type == 1:
-                    env.skill(env.player_list[action[0]])
-                elif type == 2:
-                    env.remove(env.player_list[action[0]])
 
-                # TODO: 环境交互 next_state, reward = env.step(action)
                 next_state, reward, done, _, _ = env.step(action)
                 tqdm.write(f"action:{str(action)}, reward:{reward}")
 
@@ -64,6 +56,7 @@ for i in range(10):
                 #更新状态和奖励 state = next_state, episode_return += reward
                 state = next_state
                 episode_return += reward
+
 
                 # 当经验回放池buffer数据的数量超过一定值后,才进行Q网络训练
                 if replay_buffer.size() > minimal_size:

@@ -23,7 +23,7 @@ class Cutter:
         PHONE = 1
         PC = 2
 
-    # 单次识别并识别敌人数
+    # 单次识别并识别敌人数(上方的)
     def image_enemy_point_detect(self, type: ScreenType):
         print("开始")
         roi_coords = self.mumu_enemy_point_coords if type == self.ScreenType.PC else self.phone_enemy_point_coords
@@ -42,12 +42,17 @@ class Cutter:
     def image_stream_enemy_detect(self, model:YOLO, type: ScreenType):
         # 对单张图片而言
         print("开始识别敌人")
-        roi_coords = self.mumu_fee_roi_coords if type == self.ScreenType.PC else self.phone_fee_roi_coords
+        # roi_coords = self.mumu_fee_roi_coords if type == self.ScreenType.PC else self.phone_fee_roi_coords
         while True:
             image = pyautogui.screenshot(region=self.screen_parm)
             res = model(image)[0]
             print(f"模型识别到的类:{res.boxes.cls}")
             print(f"识别类的置信度：{res.boxes.conf}")
+
+    def enemy_detect(self, model:YOLO, type: ScreenType):
+        image = pyautogui.screenshot(region=self.screen_parm)
+        res = model(image)[0]
+        return res
 
     # 连续截屏
     def image_stream_shot(self):

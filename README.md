@@ -2,4 +2,7 @@
 ## Device
 - MUMU模拟器
 
+## Requirement
+- python >= 3.10
+
 相关代码仍在完善中
