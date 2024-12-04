@@ -67,6 +67,7 @@ class Cutter:
 
     def enemy_detect(self, model:YOLO, type: ScreenType):
         image = pyautogui.screenshot(region=self.screen_parm)
+        image = cv2.imread('res_image/number.png')
         res = model(image)[0]
         return res
 
@@ -174,7 +175,7 @@ if __name__ == '__main__':
 
     res = cutter.enemy_detect(model, Cutter.ScreenType.PC)
 
-    print()
+    print(res.names.get(res.boxes.cls.item()), len(res.boxes))
     # image_path = 'res_image/number.png'
     # mumu_roi_coords = (1740, 700, 2000, 860)  # 定义 ROI 区域，格式为 (x_start, y_start, x_end, y_end)
     # phone_roi_coords = (2550, 800, 2700, 960)
