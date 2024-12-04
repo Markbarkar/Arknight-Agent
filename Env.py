@@ -43,7 +43,7 @@ class ArknightEnv(Env):
     """
 
     """
-    NOTE: 只需要更新fee和position_list就可以自动更新available_player_list
+    NOTE: !!只需要更新fee和position_list就可以自动更新available_player_list!!
     """
     # 根据fee进行自动更新
     @property
@@ -85,13 +85,16 @@ class ArknightEnv(Env):
         self.player_fee_list = [25, 17, 16, 16, 16, 9, 8, 9]
 
         # 每个可放置地块的坐标列表，序号越小越靠近蓝门
-        self.position_location_list = [[100,200], [200,300]]
+        self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
+               (1281, 261), (1130, 389), (1321, 519), (1502, 671),
+               (1137, 267), (985, 379), (1160, 520), (1338, 653),
+               (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
 
         self.player_list = ['维什戴尔','泡普卡', '史都华德', '苏苏洛', '卡提', '克洛斯', '桃金娘', '芬']
         self.caculate_list = [item for item in range(len(self.player_list))]
 
         # 部署费用
-        self.fee = 17
+        self.fee = 99
 
         # 在场干员列表
         # self.position_list = [{'id': '桃金娘', 'position': (1,2), 'ditection': 'DOWN'}]
@@ -152,8 +155,16 @@ class ArknightEnv(Env):
               seed: Optional[int] = None,
               options: Optional[dict] = None,
               ):
-        # TODO: 返回【部署费用， 在场敌人数， 保卫点数】
-        return torch.tensor([0, 0, 3], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+        # TODO:重开游戏
+
+        return torch.tensor([0, 0, 0], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+
+    def scan_floor(self):
+        self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
+               (1281, 261), (1130, 389), (1321, 519), (1502, 671),
+               (1137, 267), (985, 379), (1160, 520), (1338, 653),
+               (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
+        return self.position_location_list
 
     def place(self, name, position, time, direction: DirectionType):
         id = self.player_list.index(name)

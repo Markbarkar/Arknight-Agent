@@ -26,7 +26,7 @@ buffer_size = 10000
 # 经验回放池的最低训练阈值(500)
 minimal_size = 5
 # 经验回放池随机抽取训练数（64）
-batch_size = 2
+batch_size = 3
 replay_buffer = ReplayBuffer(buffer_size)
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
     "cpu")
@@ -40,19 +40,30 @@ for i in range(10):
     # 用来显示进度条的,把一整个训练过程分成10段，总训练次数还是num_episodes
     with tqdm(total=int(num_episodes / 10), desc='Iteration %d' % i) as pbar:
         for i_episode in range(int(num_episodes / 10)):
+            episode_return = 0
             # TODO: 环境的重置
             state = env.reset()
             done = False
             while not done:
-                # TODO: 考虑要不要修改为传递state
-                action = agent.take_action(state, env.output_dic())
-                tqdm.write(f"action:{str(action)}")
+                action, type = agent.take_action(state, env.output_dic())
+                # TODO:添加检测
+                if type == 0:
+                    env.place(env.player_list[action[0]], env.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
+                elif type == 1:
+                    env.skill(env.player_list[action[0]])
+                elif type == 2:
+                    env.remove(env.player_list[action[0]])
+
                 # TODO: 环境交互 next_state, reward = env.step(action)
                 next_state, reward, done, _, _ = env.step(action)
+                tqdm.write(f"action:{str(action)}, reward:{reward}")
 
                 # 这里的done存储用浮点数，更新网络计算q值的时候结束时q为0，要用到done
                 replay_buffer.add(state, action, reward, next_state, float(done))
-                # TODO: 更新状态和奖励 state = next_state, episode_return += reward
+
+                #更新状态和奖励 state = next_state, episode_return += reward
+                state = next_state
+                episode_return += reward
 
                 # 当经验回放池buffer数据的数量超过一定值后,才进行Q网络训练
                 if replay_buffer.size() > minimal_size:
@@ -65,7 +76,7 @@ for i in range(10):
                         'dones': b_d
                     }
                     # print(transition_dict)
-                    agent.update(transition_dict)
+                    agent.update(transition_dict, {'gamma': gamma, 'batch_size': batch_size})
 
                 # number = int(cutter.image_number_detect(Cutter.ScreenType.PC))
                 # print(number)

@@ -89,7 +89,7 @@ class DQN:
                  epsilon, target_update, device):
         # self.action_dim = action_dim
 
-        # TODO:这里想办法和环境的参数联系在一起，num_characters是干员列表，num_positions是地图的可放置方块数
+        # TODO:这里想办法和环境的参数联系在一起，num_characters是干员列表长度，num_positions是地图的可放置方块数
         self.num_characters = 8
         self.num_positions = 10
         self.num_directions = 4
@@ -112,8 +112,7 @@ class DQN:
         self.count = 0  # 计数器,记录更新次数
         self.device = device
 
-    # 因为state数据可能不足以用来决策
-    # TODO:修改一下这里的传参，改成只传state
+
     def take_action(self, state, env:dict):  # epsilon-贪婪策略采取动作
         # TODO: 修改调整action，在出现部署费用不足、地块已部署的时候可以采取其他行为，初步想法是一次性给出3-5个最优行为列表
         # 选择探索行为
@@ -129,17 +128,14 @@ class DQN:
                     action = torch.tensor([random.choice(env['available_player_list'])]), random.choice(env['available_player_list']), torch.round(torch.rand((1,)) * torch.tensor([4])).int()
                 # 使用干员技能
                 elif i == 1:
-                    action = torch.tensor([-1, random.choice(env['available_player_list']), 1])
+                    action = torch.tensor([0, random.choice(env['available_player_list']), 1])
                 # 撤退干员
-                else:
-                    action = torch.tensor([-2, random.choice(env['available_player_list']), 1])
-            return action
+                elif i == 2:
+                    action = torch.tensor([0, random.choice(env['available_player_list']), 1])
+            return action, i
         else:
             # print("开始最优行为")
-            # TODO: 和screenshot联通这里的数据
             # 【部署费用， 在场敌人数， 保卫点数】
-    #         state = torch.tensor([5, 10, 3], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device(
-    # "cpu"))
 
             # 采用分散动作头（Mult-head）的输出方法，输出每个动作的q值再比较
             place_q, skill_q, retreat_q = self.q_net(state)
@@ -168,29 +164,27 @@ class DQN:
                 # chosen_action = torch.argmax(place_q).item()  # 选择放置动作
                 max_indices = torch.unravel_index(place_q.argmax(), place_q.shape)
                 # print(f"Batch: {max_indices[0]}, Character: {max_indices[1]}, Position: {max_indices[2]}, Direction: {max_indices[3]}")
-                return torch.tensor([max_indices[1], max_indices[2], max_indices[3]])
+                return torch.tensor([max_indices[1], max_indices[2], max_indices[3]]), 0
             # 技能
             elif max_skill_q >= max_place_q and max_skill_q >= max_retreat_q:
                 # chosen_action = torch.argmax(skill_q).item()  # 选择技能使用动作
                 max_indices = torch.unravel_index(skill_q.argmax(), skill_q.shape)
                 # print(f"Batch: {max_indices[0]}, Character: {max_indices[1]}, skill: {max_indices[2]}")
-                return torch.tensor([-1, max_indices[1], max_indices[2]])
+                return torch.tensor([0, max_indices[1], max_indices[2]]), 1
             # 撤退
             else:
                 # chosen_action = torch.argmax(retreat_q).item()  # 选择撤退动作
                 max_indices = torch.unravel_index(retreat_q.argmax(), retreat_q.shape)
                 # print(f"Batch: {max_indices[0]}, Character: {max_indices[1]}, retreat: {max_indices[2]}")
-                return torch.tensor([-2, max_indices[1], max_indices[2]])
+                return torch.tensor([0, max_indices[1], max_indices[2]]), 2
 
 
 
-    def update(self, transition_dict):
-        # FIXME:修改这里的gamma、batch_size位置
-        gamma = 0.98
-        batch_size = 2
+    def update(self, transition_dict, arg:dict):
+        gamma = arg['gamma']
+        batch_size = arg['batch_size']
 
-        states = torch.tensor(transition_dict['states'],
-                              dtype=torch.float).to(self.device)
+        states = torch.stack(transition_dict['states']).to(self.device)
 
         #会出现action数据长度不一致的情况RuntimeError: stack expects each tensor to be equal size, but got [4] at entry 0 and [3] at entry 1
         actions = torch.stack(transition_dict['actions']).to(
