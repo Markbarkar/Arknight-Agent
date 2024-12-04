@@ -13,6 +13,10 @@ class Cutter:
         self.screen_parm = (0, 0, 1858, 1096)
         self.mumu_fee_roi_coords = (1740, 700, 2000, 860)  # 定义 ROI 区域，格式为 (x_start, y_start, x_end, y_end)
         self.phone_fee_roi_coords = (2550, 800, 2700, 960)
+
+        self.mumu_point_roi_coords = (1010, 0, 1200, 200)
+        self.phone_point_roi_coords = (0, 0, 1000, 1400)
+
         # 横向大概25， 纵向130， 蓝门前【1437， 400】
         self.mumu_enemy_point_coords = ()
         self.phone_enemy_point_coords = ()
@@ -37,6 +41,18 @@ class Cutter:
             return recognized_numbers
         else:
             print("Not Found.")
+
+    def point_number_detect(self, type: ScreenType):
+        roi_coords = self.mumu_point_roi_coords if type == self.ScreenType.PC else self.phone_fee_roi_coords
+        image = pyautogui.screenshot(region=self.screen_parm)
+        binary_image = self.preprocess_image(image, roi_coords)
+        recognized_numbers = self.segment_and_recognize(binary_image)
+        number_list = re.findall(r'\d+', recognized_numbers)
+        if len(number_list) != 0:
+            recognized_numbers = re.findall(r'\d+', recognized_numbers)[0]
+            return recognized_numbers
+        else:
+            return -1
 
     # 连续截屏并识别
     def image_stream_enemy_detect(self, model:YOLO, type: ScreenType):
@@ -80,7 +96,7 @@ class Cutter:
             time.sleep(1)
 
     # 单次识别部署费用
-    def image_number_detect(self, type: ScreenType) -> int:
+    def fee_number_detect(self, type: ScreenType) -> int:
         roi_coords = self.mumu_fee_roi_coords if type == self.ScreenType.PC else self.phone_fee_roi_coords
         image = pyautogui.screenshot(region=self.screen_parm)
         binary_image = self.preprocess_image(image, roi_coords)
@@ -152,9 +168,13 @@ if __name__ == '__main__':
 
     # cutter.image_stream_shot()
     model = YOLO("model/train3.pt")
-    cutter.image_stream_enemy_detect(model, Cutter.ScreenType.PC)
+    # cutter.image_stream_enemy_detect(model, Cutter.ScreenType.PC)
 
-    # cutter.image_stream_number_detect(Cutter.ScreenType.PC)
+    # print(cutter.point_number_detect(Cutter.ScreenType.PC))
+
+    res = cutter.enemy_detect(model, Cutter.ScreenType.PC)
+
+    print()
     # image_path = 'res_image/number.png'
     # mumu_roi_coords = (1740, 700, 2000, 860)  # 定义 ROI 区域，格式为 (x_start, y_start, x_end, y_end)
     # phone_roi_coords = (2550, 800, 2700, 960)

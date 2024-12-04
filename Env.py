@@ -128,9 +128,9 @@ class ArknightEnv(Env):
 
     def update(self):
         # self.cutter.image_stream_enemy_detect(Cutter.ScreenType.PC)
-        self.fee = self.cutter.image_number_detect(Cutter.ScreenType.PC)
+        self.fee = self.cutter.fee_number_detect(Cutter.ScreenType.PC)
         self.enemy = self.cutter.enemy_detect(YOLO("model/train3.pt"), Cutter.ScreenType.PC)
-        self.point = self.cutter
+        self.point = self.cutter.point_number_detect(Cutter.ScreenType.PC)
 
     # 可视化处理
     def render(self) -> Optional[Union[RenderFrame, List[RenderFrame]]]:
