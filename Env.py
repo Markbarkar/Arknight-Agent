@@ -153,7 +153,7 @@ class ArknightEnv(Env):
               options: Optional[dict] = None,
               ):
         # TODO: 返回【部署费用， 在场敌人数， 保卫点数】
-        return torch.tensor([0, 0, 3])
+        return torch.tensor([0, 0, 3], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
 
     def place(self, name, position, time, direction: DirectionType):
         id = self.player_list.index(name)
@@ -213,6 +213,14 @@ class ArknightEnv(Env):
         pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
         pyautogui.moveRel(200, 170)
         pyautogui.click()
+
+    def output_dic(self):
+        res = {
+            'available_position_list':self.available_position_list,
+            'position_list':self.position_list,
+            'action_max_dim':self.action_max_dim
+        }
+        return res
 
 
 if __name__ == '__main__':

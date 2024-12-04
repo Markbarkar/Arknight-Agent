@@ -45,7 +45,7 @@ for i in range(10):
             done = False
             while not done:
                 # TODO: 考虑要不要修改为传递state
-                action = agent.take_action(env)
+                action = agent.take_action(state, env.output_dic())
                 tqdm.write(f"action:{str(action)}")
                 # TODO: 环境交互 next_state, reward = env.step(action)
                 next_state, reward, done, _, _ = env.step(action)
