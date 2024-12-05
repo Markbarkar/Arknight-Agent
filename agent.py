@@ -24,7 +24,7 @@ class ReplayBuffer:
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
         transitions = random.sample(self.buffer, batch_size)
         state, action, reward, next_state, done = zip(*transitions)
-        return state, action, reward, np.array(next_state), done
+        return state, action, reward, next_state, done
 
     def size(self):  # 目前buffer中数据的数量
         return len(self.buffer)
@@ -121,6 +121,7 @@ class DQN:
             # 场上没有干员，只能选择放置干员
             if len(env['position_list']) == 0:
                 action = torch.round(torch.rand((3,)) * torch.tensor(env['action_max_dim'])).int()
+                i = 0
             else:
                 i = np.random.randint(0, 3)
                 # 放置干员
@@ -191,8 +192,7 @@ class DQN:
             self.device)
         rewards = torch.tensor(transition_dict['rewards'],
                                dtype=torch.float).view(-1, 1).to(self.device)
-        next_states = torch.tensor(transition_dict['next_states'],
-                                   dtype=torch.float).to(self.device)
+        next_states = torch.stack(transition_dict['next_states']).to(self.device)
         dones = torch.tensor(transition_dict['dones'],
                              dtype=torch.float).view(-1, 1).to(self.device)
 

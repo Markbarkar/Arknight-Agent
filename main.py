@@ -47,7 +47,7 @@ for i in range(10):
             while not done:
                 action, type = agent.take_action(state, env.output_dic())
 
-                next_state, reward, done, _, _ = env.step(action)
+                next_state, reward, done, _, _ = env.step((action, type))
                 tqdm.write(f"action:{str(action)}, reward:{reward}")
 
                 # 这里的done存储用浮点数，更新网络计算q值的时候结束时q为0，要用到done
@@ -56,7 +56,6 @@ for i in range(10):
                 #更新状态和奖励 state = next_state, episode_return += reward
                 state = next_state
                 episode_return += reward
-
 
                 # 当经验回放池buffer数据的数量超过一定值后,才进行Q网络训练
                 if replay_buffer.size() > minimal_size:
@@ -71,21 +70,4 @@ for i in range(10):
                     # print(transition_dict)
                     agent.update(transition_dict, {'gamma': gamma, 'batch_size': batch_size})
 
-                # number = int(cutter.image_number_detect(Cutter.ScreenType.PC))
-                # print(number)
-                # if number > 14 and '芬' in env.available_player_list:
-                #     env.place("芬", floor_2, 0.7, ArknightEnv.DirectionType.LEFT)
-                #     sleep(1)
-                # if number > 8 and '桃金娘' in env.available_player_list:
-                #     env.place("桃金娘", floor_1, 0.7, ArknightEnv.DirectionType.DOWN)
-                #     sleep(1)
-                # sleep(1)
             pbar.update(1)
-
-# env.place("桃金娘", floor_1, 0.7, ArknightEnv.DirectionType.LEFT)
-# sleep(15)
-# env.skill("桃金娘")
-# env.place("芬", floor_2, 0.7, ArknightEnv.DirectionType.LEFT)
-# sleep(10)
-# env.place("克洛斯", platform_1, 0.7, ArknightEnv.DirectionType.DOWN)
-# env.remove("桃金娘")

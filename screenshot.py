@@ -42,9 +42,9 @@ class Cutter:
         else:
             print("Not Found.")
 
-    def point_number_detect(self, type: ScreenType):
+    def point_number_detect(self, image, type: ScreenType):
         roi_coords = self.mumu_point_roi_coords if type == self.ScreenType.PC else self.phone_fee_roi_coords
-        image = pyautogui.screenshot(region=self.screen_parm)
+        # image = pyautogui.screenshot(region=self.screen_parm)
         binary_image = self.preprocess_image(image, roi_coords)
         recognized_numbers = self.segment_and_recognize(binary_image)
         number_list = re.findall(r'\d+', recognized_numbers)
@@ -65,9 +65,9 @@ class Cutter:
             print(f"模型识别到的类:{res.boxes.cls}")
             print(f"识别类的置信度：{res.boxes.conf}")
 
-    def enemy_detect(self, model:YOLO, type: ScreenType):
-        image = pyautogui.screenshot(region=self.screen_parm)
-        image = cv2.imread('res_image/number.png')
+    def enemy_detect(self, image, model:YOLO, type: ScreenType):
+        # image = pyautogui.screenshot(region=self.screen_parm)
+        # image = cv2.imread('res_image/number.png')
         res = model(image)[0]
         return res
 
@@ -97,9 +97,9 @@ class Cutter:
             time.sleep(1)
 
     # 单次识别部署费用
-    def fee_number_detect(self, type: ScreenType) -> int:
+    def fee_number_detect(self, image, type: ScreenType) -> int:
         roi_coords = self.mumu_fee_roi_coords if type == self.ScreenType.PC else self.phone_fee_roi_coords
-        image = pyautogui.screenshot(region=self.screen_parm)
+        # image = pyautogui.screenshot(region=self.screen_parm)
         binary_image = self.preprocess_image(image, roi_coords)
         recognized_numbers = self.segment_and_recognize(binary_image)
         number_list = re.findall(r'\d+', recognized_numbers)
@@ -172,8 +172,9 @@ if __name__ == '__main__':
     # cutter.image_stream_enemy_detect(model, Cutter.ScreenType.PC)
 
     # print(cutter.point_number_detect(Cutter.ScreenType.PC))
-
-    res = cutter.enemy_detect(model, Cutter.ScreenType.PC)
+    # image = pyautogui.screenshot(region=cutter.screen_parm)
+    image = cv2.imread('res_image/number.png')
+    res = cutter.enemy_detect(image, model, Cutter.ScreenType.PC)
 
     print(res.names.get(res.boxes.cls.item()), len(res.boxes))
     # image_path = 'res_image/number.png'

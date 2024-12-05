@@ -19,9 +19,9 @@ class ArknightEnv(Env):
     # TODO: 完善干员的索引，是用名字来输入action还是用id
 
     class ActType(Enum):
-        PLACE = 1
-        SKILL = 2
-        REMOVE = 3
+        PLACE = 0
+        SKILL = 1
+        REMOVE = 2
 
     class DirectionType(Enum):
         LEFT = 0
@@ -53,9 +53,10 @@ class ArknightEnv(Env):
     def fee_available_player_list(self):
         return [b for a, b in zip(self.player_fee_list, self.player_list) if a <= self.fee]
 
-    # 根据position_list和fee_available_player_list自动更新
+    # 根据position_list和fee_available_player_list自动更新，可用干员列表
     @property
     def available_player_list(self):
+        # 已放置干员列表
         id_list = [item.get('id') for item in self.position_list if 'id' in item]
         return [b for b in self.fee_available_player_list if b not in id_list]
 
@@ -127,19 +128,23 @@ class ArknightEnv(Env):
         self.observation_space = spaces.MultiDiscrete([99, 20, 4])
 
     def update(self):
+        image = pyautogui.screenshot(region=self.cutter.screen_parm)
         # self.cutter.image_stream_enemy_detect(Cutter.ScreenType.PC)
-        self.fee = self.cutter.fee_number_detect(Cutter.ScreenType.PC)
-        self.enemy = len(self.cutter.enemy_detect(YOLO("model/train3.pt"), Cutter.ScreenType.PC).boxes)
-        self.point = self.cutter.point_number_detect(Cutter.ScreenType.PC)
+        # 更新识别到的数字
+        if self.cutter.fee_number_detect(image, Cutter.ScreenType.PC) != -1:
+            self.fee = self.cutter.fee_number_detect(image, Cutter.ScreenType.PC)
+        self.enemy = len(self.cutter.enemy_detect(image, YOLO("model/train3.pt"), Cutter.ScreenType.PC).boxes)
+        self.point = self.cutter.point_number_detect(image, Cutter.ScreenType.PC)
 
     # 可视化处理
     def render(self) -> Optional[Union[RenderFrame, List[RenderFrame]]]:
         pass
 
     # 根据输入动作进行推演，返回observation, reward, terminated, truncated, info
-    def step(self, action: Tensor) -> Tuple[Tensor, float, bool, bool, dict]:
-
+    def step(self, arg:Tuple) -> Tuple[Tensor, float, bool, bool, dict]:
+        action, type = arg
         # TODO:完善step步骤, 添加检测,包括费用不足/干员已放置/干员未放置/地块已放置/地块不可放置
+        print(f"action:{ArknightEnv.ActType(type)}")
         if type == 0:
             self.place(self.player_list[action[0]], self.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
         elif type == 1:
@@ -147,12 +152,20 @@ class ArknightEnv(Env):
         elif type == 2:
             self.remove(self.player_list[action[0]])
 
+        # 环境更新
+        self.update()
+
         # 下一个state【部署费用， 在场敌人数， 保卫点数】
-        # state = torch.tensor([self.fee, self.enemy, self.point])
-        state = torch.rand((3, ),) * torch.tensor([10, 3, 3])
-        state = state.round().int()
-        reward = -1.0 + random.random() * 2
-        done = True
+        state = torch.tensor([self.fee, self.enemy, self.point], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+        # state = torch.rand((3, ),) * torch.tensor([10, 3, 3])
+        # state = state.round().int()
+        # reward = -1.0 + random.random() * 2
+
+        # 奖励函数
+        reward = -0.2 * self.fee + -1 * self.enemy + 1 * self.point
+
+        # TODO: 随机延迟一局的长度，方便测试数据观察，更新结束条件
+        done = True if random.randint(0, 4) == 0 else False
 
         truncated = False
         info = {}
@@ -166,7 +179,7 @@ class ArknightEnv(Env):
               ):
         # TODO:重开游戏
 
-        return torch.tensor([0, 0, 0], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+        return torch.tensor([self.fee, 0, 0], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
 
     def scan_floor(self):
         self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
@@ -178,8 +191,17 @@ class ArknightEnv(Env):
     def place(self, name, position, time, direction: DirectionType):
         id = self.player_list.index(name)
         left_top = (0, 0)
-        # 在可选干员里的序号
-        transform_id = self.available_player_list.index(self.player_list[id])
+        transform_id = 0
+        try:
+            print(f"费用:{self.fee}")
+            print(f"费用可用干员列表:{self.fee_available_player_list}")
+            print(f"可用干员列表:{self.available_player_list}")
+            print(f"已放置干员列表:{self.position_list}")
+            # 在可选干员里的序号
+            transform_id = self.available_player_list.index(self.player_list[id])
+        except ValueError as e:
+            print(f"{self.player_list[id]}不在可放置干员列表！操作失败,error:{e}")
+            return
 
         # 这里不能直接用id了，因为放置干员后下面的干员列表会出现变化，要通过转化才能用
         start = (left_top[0] + 1760 + (-180 * transform_id), left_top[1] + 1010)
