@@ -1,4 +1,5 @@
 import random
+from functools import lru_cache
 from typing import Tuple, Optional, Union, List
 import pyautogui
 import numpy as np
@@ -7,6 +8,8 @@ from gym import Env, spaces
 from gym.core import ObsType, RenderFrame
 from enum import Enum
 from time import sleep
+
+from matplotlib.style.core import available
 from torch import Tensor
 from ultralytics import YOLO
 
@@ -57,8 +60,20 @@ class ArknightEnv(Env):
     @property
     def available_player_list(self):
         # 已放置干员列表
-        id_list = [item.get('id') for item in self.position_list if 'id' in item]
-        return [b for b in self.fee_available_player_list if b not in id_list]
+        result = [self.player_list[i] for i, b in enumerate(self.player_status_list) if b]
+        return result
+
+    # 同上，是index版
+    @property
+    def available_player_list_id(self):
+        # 已放置干员列表
+        result = [i for i, b in enumerate(self.player_status_list) if b]
+        return result
+
+    @property
+    def position_list_id(self):
+        # 已放置干员列表index版
+        return [i.get('id') for i in self.position_list]
 
     # 定义一个属性用来描述敌人距离蓝门的距离,假设距离蓝门的地块越近，那么该值越大越好
     @property
@@ -95,7 +110,7 @@ class ArknightEnv(Env):
                (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
 
         self.player_list = ['维什戴尔','泡普卡', '史都华德', '苏苏洛', '卡提', '克洛斯', '桃金娘', '芬']
-        self.caculate_list = [item for item in range(len(self.player_list))]
+        self.player_status_list = [True for _ in self.player_list]
 
         # 部署费用
         self.fee = 99
@@ -104,7 +119,7 @@ class ArknightEnv(Env):
         self.cutter = Cutter()
 
         # 在场干员列表
-        # self.position_list = [{'id': '桃金娘', 'position': (1,2), 'ditection': 'DOWN'}]
+        # self.position_list = [{'id': 6, 'position': (1,2), 'ditection': 'DOWN'}]
         self.position_list = []
 
         # 可放置的方块列表
@@ -144,13 +159,13 @@ class ArknightEnv(Env):
     def step(self, arg:Tuple) -> Tuple[Tensor, float, bool, bool, dict]:
         action, type = arg
         # TODO:完善step步骤, 添加检测,包括费用不足/干员已放置/干员未放置/地块已放置/地块不可放置
-        print(f"action:{ArknightEnv.ActType(type)}")
+        # print(f"action:{ArknightEnv.ActType(type)}")
         if type == 0:
             self.place(self.player_list[action[0]], self.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
         elif type == 1:
-            self.skill(self.player_list[action[0]])
+            self.skill(self.player_list[action[1]])
         elif type == 2:
-            self.remove(self.player_list[action[0]])
+            self.remove(self.player_list[action[1]])
 
         # 环境更新
         self.update()
@@ -193,14 +208,13 @@ class ArknightEnv(Env):
         left_top = (0, 0)
         transform_id = 0
         try:
-            print(f"费用:{self.fee}")
-            print(f"费用可用干员列表:{self.fee_available_player_list}")
-            print(f"可用干员列表:{self.available_player_list}")
-            print(f"已放置干员列表:{self.position_list}")
+            print(f"place前费用:{self.fee}")
+            print(f"place前可用干员列表:{self.available_player_list}")
+            print(f"place前已放置干员列表:{self.position_list}")
             # 在可选干员里的序号
-            transform_id = self.available_player_list.index(self.player_list[id])
+            transform_id = self.available_player_list.index(name)
         except ValueError as e:
-            print(f"{self.player_list[id]}不在可放置干员列表！操作失败,error:{e}")
+            print(f"{name}不在可放置干员列表！操作失败,error:{e}")
             return
 
         # 这里不能直接用id了，因为放置干员后下面的干员列表会出现变化，要通过转化才能用
@@ -219,12 +233,12 @@ class ArknightEnv(Env):
 
         print(f"放置干员{name}在{position},方向为{direction}")
         self.position_list.append({'id': id, 'position': position, 'ditection': direction})
-        self.available_player_list.remove(self.available_player_list[transform_id])
-        self.caculate_list.remove(id)
+        # self.available_player_list.remove(self.available_player_list[transform_id])
+        self.player_status_list[id] = False
         self.fee -= self.player_fee_list[self.player_list.index(name)]
-        print(f"更新部署费用:{self.fee}")
-        print(f"目前可部署干员:{self.available_player_list}")
-        # print(self.caculate_list)
+        print(f"place后费用:{self.fee}")
+        print(f"place后可部署干员:{self.available_player_list}")
+        print(f"place后已放置干员列表:{self.position_list}")
 
     def remove(self, name):
         id = self.player_list.index(name)
@@ -238,14 +252,16 @@ class ArknightEnv(Env):
         pyautogui.click()
 
         # 根据name计算插入到待定干员的序列（保证顺序）
-        i = 0
-        while i < len(self.caculate_list) and id > self.caculate_list[i]:
-            i += 1
-        self.available_player_list.insert(id, name)
-        self.caculate_list.insert(i, id)
+        # i = 0
+        # while i < len(self.caculate_list) and id > self.caculate_list[i]:
+        #     i += 1
+        # self.available_player_list.insert(id, name)
+        # self.caculate_list.insert(i, id)
+
+        self.player_status_list[id] = True
         print(f"撤回干员{name}")
         print(self.available_player_list)
-        print(self.caculate_list)
+        print(self.player_status_list)
 
     def skill(self, name):
         id = self.player_list.index(name)
@@ -260,7 +276,11 @@ class ArknightEnv(Env):
         res = {
             'available_position_list':self.available_position_list,
             'position_list':self.position_list,
-            'action_max_dim':self.action_max_dim
+            'action_max_dim':self.action_max_dim,
+            'player_fee_list':self.player_fee_list,
+            'fee':self.fee,
+            'available_player_list_id':self.available_player_list_id,
+            'position_list_id':self.position_list_id
         }
         return res
 
@@ -268,14 +288,16 @@ class ArknightEnv(Env):
 if __name__ == '__main__':
     env = ArknightEnv()
 
-    floor_1 = (1306, 407)
-    platform_1 = (1155, 510)
-    floor_2 = (1155, 400)
-    # 测试发现0.5s的操作似乎会拖动中断
-    env.place("桃金娘", floor_1, 0.7, ArknightEnv.DirectionType.LEFT)
-    sleep(15)
-    env.skill("桃金娘")
-    env.place("芬", floor_2, 0.7, ArknightEnv.DirectionType.LEFT)
-    sleep(10)
-    env.place("克洛斯", platform_1, 0.7, ArknightEnv.DirectionType.DOWN)
-    env.remove("桃金娘")
+    # floor_1 = (1306, 407)
+    # platform_1 = (1155, 510)
+    # floor_2 = (1155, 400)
+    # # 测试发现0.5s的操作似乎会拖动中断
+    # env.place("桃金娘", floor_1, 0.7, ArknightEnv.DirectionType.LEFT)
+    # sleep(15)
+    # env.skill("桃金娘")
+    # env.place("芬", floor_2, 0.7, ArknightEnv.DirectionType.LEFT)
+    # sleep(10)
+    # env.place("克洛斯", platform_1, 0.7, ArknightEnv.DirectionType.DOWN)
+    # env.remove("桃金娘")
+
+    character_valid = (torch.arange(env.num_characters).unsqueeze(0) >= torch.tensor(env.fee).unsqueeze(1))

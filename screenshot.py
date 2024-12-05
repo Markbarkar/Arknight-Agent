@@ -105,7 +105,7 @@ class Cutter:
         number_list = re.findall(r'\d+', recognized_numbers)
         if len(number_list) != 0:
             recognized_numbers = re.findall(r'\d+', recognized_numbers)[0]
-            return recognized_numbers
+            return int(recognized_numbers)
         else:
             return -1
 

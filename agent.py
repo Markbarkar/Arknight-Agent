@@ -138,8 +138,6 @@ class DQN:
             # print("开始最优行为")
             # 【部署费用， 在场敌人数， 保卫点数】
 
-            # 采用分散动作头（Mult-head）的输出方法，输出每个动作的q值再比较
-            place_q, skill_q, retreat_q = self.q_net(state)
             """
             place_q[0][2][5] = [-0.7299, 1.1585, -0.2429, -0.3950]
             表示干员编号 2 放置在位置 5 的 4 个方向的 Q 值分别为：
@@ -149,9 +147,46 @@ class DQN:
             向左（3）：-0.3950
             最优方向为 向右，因为它的 Q 值最大（1.1585）。
             """
-            # place_action = torch.argmax(place_q).item()  # 放置干员的动作
-            # skill_action = torch.argmax(skill_q).item()  # 技能使用的动作
-            # retreat_action = torch.argmax(retreat_q).item()  # 撤退的动作
+
+            # 采用分散动作头（Mult-head）的输出方法，输出每个动作的q值再比较
+            place_q, skill_q, retreat_q = self.q_net(state)
+
+            # TODO:动作筛选
+            batchsize, num_player, num_positions, directions = place_q.shape
+
+            # 构造干员掩码
+            player_mask = torch.ones((1, num_player, 1, 1), dtype=torch.bool, device=place_q.device)
+            player_mask[:, env['available_player_list_id'], :, :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
+
+            # 构造地块掩码
+            position_mask = torch.ones((1, 1, num_positions, 1), dtype=torch.bool, device=place_q.device)
+            position_mask[:, :, env['available_position_list'], :] = False  # 不需要屏蔽的地块编号对应的位置设置为 False
+
+            # 合并掩码 (batchsize, num_player, num_positions, directions)
+            combined_mask = player_mask | position_mask
+
+            # 应用掩码，将对应的 Q 值设置为 -inf
+            place_q = place_q.masked_fill(combined_mask, float('-inf'))
+
+            # 对技能使用地动作筛选
+            batchsize, num_player, isskill = skill_q.shape
+            player_mask = torch.ones((1, num_player, 1), dtype=torch.bool, device=place_q.device)
+            player_mask[:, env['position_list_id'], :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
+
+            skill_q = skill_q.masked_fill(player_mask, float('-inf'))
+
+            # 对撤退操作进行动作筛选
+            batchsize, num_player, isskill = retreat_q.shape
+            player_mask = torch.ones((1, num_player, 1), dtype=torch.bool, device=place_q.device)
+            player_mask[:, env['position_list_id'], :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
+
+            retreat_q = retreat_q.masked_fill(player_mask, float('-inf'))
+
+
+
+
+
+
 
             # 获取每种动作的最大 Q 值
             max_place_q = place_q.max().item()
@@ -164,19 +199,16 @@ class DQN:
             if max_place_q >= max_skill_q and max_place_q >= max_retreat_q:
                 # chosen_action = torch.argmax(place_q).item()  # 选择放置动作
                 max_indices = torch.unravel_index(place_q.argmax(), place_q.shape)
-                # print(f"Batch: {max_indices[0]}, Character: {max_indices[1]}, Position: {max_indices[2]}, Direction: {max_indices[3]}")
                 return torch.tensor([max_indices[1], max_indices[2], max_indices[3]]), 0
             # 技能
             elif max_skill_q >= max_place_q and max_skill_q >= max_retreat_q:
                 # chosen_action = torch.argmax(skill_q).item()  # 选择技能使用动作
                 max_indices = torch.unravel_index(skill_q.argmax(), skill_q.shape)
-                # print(f"Batch: {max_indices[0]}, Character: {max_indices[1]}, skill: {max_indices[2]}")
                 return torch.tensor([0, max_indices[1], max_indices[2]]), 1
             # 撤退
             else:
                 # chosen_action = torch.argmax(retreat_q).item()  # 选择撤退动作
                 max_indices = torch.unravel_index(retreat_q.argmax(), retreat_q.shape)
-                # print(f"Batch: {max_indices[0]}, Character: {max_indices[1]}, retreat: {max_indices[2]}")
                 return torch.tensor([0, max_indices[1], max_indices[2]]), 2
 
 
