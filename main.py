@@ -20,8 +20,8 @@ num_episodes = 50
 # 隐藏层大小
 hidden_dim = 128
 gamma = 0.98
-# 探索行为阈值（0.01）
-epsilon = 0.9
+# 探索行为阈值（0.2）
+epsilon = 0.2
 target_update = 10
 buffer_size = 10000
 # 经验回放池的最低训练阈值(500)

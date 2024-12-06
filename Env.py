@@ -8,10 +8,11 @@ from gym import Env, spaces
 from gym.core import ObsType, RenderFrame
 from enum import Enum
 from time import sleep
-
+import os
 from matplotlib.style.core import available
 from torch import Tensor
 from ultralytics import YOLO
+import requests
 
 from screenshot import Cutter
 
@@ -79,6 +80,12 @@ class ArknightEnv(Env):
     def enemy_to_point(self):
         return 0
 
+    @property
+    # 可放置的方块列表
+    def available_position_list(self):
+        res = [i for i, b in enumerate(self.player_status_list) if b ]
+        return res
+
     def __init__(self):
 
         # 观测空间，暂定128*128大小
@@ -109,6 +116,8 @@ class ArknightEnv(Env):
         # 部署费用
         self.fee = 99
 
+        self.reward = 0
+        self.done = False
         # 视觉处理
         self.cutter = Cutter()
 
@@ -117,12 +126,12 @@ class ArknightEnv(Env):
         self.position_list = []
 
         # TODO:搞定方块列表的处理
-        # 可放置的方块列表
-        self.available_position_list = [1,2,3,4,5,6,7]
+
         # 干员数
         self.num_characters = len(self.player_list)
         # 可放置方块数
-        self.num_positions = len(self.available_position_list)
+        self.num_positions = 10
+        self.position_status_list = [True for _ in range(self.num_positions)]
         # 朝向
         self.num_directions = 4
         self.action_max_dim = (len(self.player_list), self.num_positions, 4)
@@ -143,7 +152,9 @@ class ArknightEnv(Env):
         # 更新识别到的数字
         if self.cutter.fee_number_detect(image, Cutter.ScreenType.PC) != -1:
             self.fee = self.cutter.fee_number_detect(image, Cutter.ScreenType.PC)
-        self.enemy = len(self.cutter.enemy_detect(image, YOLO("model/train3.pt"), Cutter.ScreenType.PC).boxes)
+
+        file_path = os.path.join("model", "train3.pt")
+        self.enemy = len(self.cutter.enemy_detect(image, YOLO(file_path), Cutter.ScreenType.PC).boxes)
         self.point = self.cutter.point_number_detect(image, Cutter.ScreenType.PC)
 
     # 可视化处理
@@ -153,13 +164,16 @@ class ArknightEnv(Env):
     # 根据输入动作进行推演，返回observation, reward, terminated, truncated, info
     def step(self, arg:Tuple) -> Tuple[Tensor, float, bool, bool, dict]:
         action, type = arg
-        # print(f"action:{ArknightEnv.ActType(type)}")
         if type == 0:
             self.place(self.player_list[action[0]], self.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
+            self.player_status_list[action[1]] = False
         elif type == 1:
             self.skill(self.player_list[action[1]])
         elif type == 2:
             self.remove(self.player_list[action[1]])
+            self.player_status_list[action[1]] = True
+
+        print(f"postion_list:{[self.available_position_list]}")
 
         # 环境更新
         self.update()
@@ -245,6 +259,7 @@ class ArknightEnv(Env):
         pyautogui.click()
 
         self.player_status_list[id] = True
+        self.position_list.remove(id)
         print(f"撤回干员{name}")
         print(f"撤退后放置的干员：{self.available_player_list}")
         print(f"撤退后的干员状态{self.player_status_list}")
@@ -276,6 +291,29 @@ class ArknightEnv(Env):
             'position_list_id':self.position_list_id
         }
         return res
+
+    def client(self):
+        url = 'http://127.0.0.1:6006/action'
+        done = False
+        while not done:
+            # 模拟环境状态
+            # 'position_list': self.position_list,
+            state = {"state": [self.fee, self.enemy, self.point], "reward": self.reward, "done": True, "dic": {
+                'available_position_list': self.available_position_list,
+                'action_max_dim': self.action_max_dim,
+                'player_fee_list': self.player_fee_list,
+                'fee': self.fee,
+                'available_player_list_id': self.available_player_list_id,
+                'position_list_id': self.position_list_id
+            }}
+            # POST 请求发送状态数据
+            response = requests.post(url, json=state)
+            print("Sending state:", state)
+
+            data = response.json()
+            print("Received action:", data)
+
+            next_state, reward, done, _, _ = self.step((torch.tensor(data.get("action")), data.get("type")))
 
 
 if __name__ == '__main__':

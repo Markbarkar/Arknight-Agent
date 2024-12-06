@@ -42,7 +42,7 @@ class Cutter:
         else:
             print("Not Found.")
 
-    def point_number_detect(self, image, type: ScreenType):
+    def point_number_detect(self, image, type: ScreenType) -> int:
         roi_coords = self.mumu_point_roi_coords if type == self.ScreenType.PC else self.phone_fee_roi_coords
         # image = pyautogui.screenshot(region=self.screen_parm)
         binary_image = self.preprocess_image(image, roi_coords)
@@ -50,7 +50,7 @@ class Cutter:
         number_list = re.findall(r'\d+', recognized_numbers)
         if len(number_list) != 0:
             recognized_numbers = re.findall(r'\d+', recognized_numbers)[0]
-            return recognized_numbers
+            return int(recognized_numbers)
         else:
             return -1
 
