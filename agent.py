@@ -4,6 +4,7 @@ import random
 import gym
 import collections
 
+from pyparsing import null_debug_action
 from sympy import total_degree
 from torch import nn
 from tqdm import tqdm
@@ -18,7 +19,8 @@ class ReplayBuffer:
     def __init__(self, capacity):
         self.buffer = collections.deque(maxlen=capacity)  # 队列,先进先出
 
-    def add(self, state, action, reward, next_state, done):  # 将数据加入buffer
+    def add(self, state, action, reward, next_state, done): # 将数据加入buffer
+        print(f"buffer添加！buffer:{self.buffer}")
         self.buffer.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
@@ -114,25 +116,33 @@ class DQN:
 
 
     def take_action(self, state, env:dict):  # epsilon-贪婪策略采取动作
-        # TODO: 修改调整action，在出现部署费用不足、地块已部署的时候可以采取其他行为，初步想法是一次性给出3-5个最优行为列表
         # 选择探索行为
         if np.random.random() < self.epsilon:
+            i = -1
+            action = None
             print("开始探索行为")
             # 场上没有干员，只能选择放置干员
-            if len(env['position_list']) == 0:
-                action = torch.round(torch.rand((3,)) * torch.tensor(env['action_max_dim'])).int()
+            # 排除choice选择空列表时的报错
+
+            if not env['available_player_list_id'] or not env['available_position_list']:
+                i = np.random.randint(1, 3)
+                # print(f"放置屏蔽！i:{i}")
+            elif not env['position_list_id']:
                 i = 0
+                # print(f"撤退/技能屏蔽！i:{i}")
             else:
                 i = np.random.randint(0, 3)
-                # 放置干员
-                if i == 0:
-                    action = torch.tensor([random.choice(env['available_player_list'])]), random.choice(env['available_player_list']), torch.round(torch.rand((1,)) * torch.tensor([4])).int()
-                # 使用干员技能
-                elif i == 1:
-                    action = torch.tensor([0, random.choice(env['available_player_list']), 1])
-                # 撤退干员
-                elif i == 2:
-                    action = torch.tensor([0, random.choice(env['available_player_list']), 1])
+                # print(f"全动作随机！i:{i}")
+
+            # 放置干员
+            if i == 0:
+                action = torch.tensor([random.choice(env['available_player_list_id']), random.choice(env['available_position_list']), random.randint(0, 3)])
+            # 使用干员技能
+            elif i == 1:
+                action = torch.tensor([0, random.choice(env['position_list_id']), 1])
+            # 撤退干员
+            elif i == 2:
+                action = torch.tensor([0, random.choice(env['position_list_id']), 1])
             return action, i
         else:
             # print("开始最优行为")
@@ -151,20 +161,17 @@ class DQN:
             # 采用分散动作头（Mult-head）的输出方法，输出每个动作的q值再比较
             place_q, skill_q, retreat_q = self.q_net(state)
 
-            # TODO:动作筛选
+            # 动作筛选
             batchsize, num_player, num_positions, directions = place_q.shape
 
             # 构造干员掩码
             player_mask = torch.ones((1, num_player, 1, 1), dtype=torch.bool, device=place_q.device)
             player_mask[:, env['available_player_list_id'], :, :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
-
             # 构造地块掩码
             position_mask = torch.ones((1, 1, num_positions, 1), dtype=torch.bool, device=place_q.device)
             position_mask[:, :, env['available_position_list'], :] = False  # 不需要屏蔽的地块编号对应的位置设置为 False
-
             # 合并掩码 (batchsize, num_player, num_positions, directions)
             combined_mask = player_mask | position_mask
-
             # 应用掩码，将对应的 Q 值设置为 -inf
             place_q = place_q.masked_fill(combined_mask, float('-inf'))
 
@@ -172,21 +179,13 @@ class DQN:
             batchsize, num_player, isskill = skill_q.shape
             player_mask = torch.ones((1, num_player, 1), dtype=torch.bool, device=place_q.device)
             player_mask[:, env['position_list_id'], :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
-
             skill_q = skill_q.masked_fill(player_mask, float('-inf'))
 
             # 对撤退操作进行动作筛选
             batchsize, num_player, isskill = retreat_q.shape
             player_mask = torch.ones((1, num_player, 1), dtype=torch.bool, device=place_q.device)
             player_mask[:, env['position_list_id'], :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
-
             retreat_q = retreat_q.masked_fill(player_mask, float('-inf'))
-
-
-
-
-
-
 
             # 获取每种动作的最大 Q 值
             max_place_q = place_q.max().item()
@@ -218,10 +217,13 @@ class DQN:
         batch_size = arg['batch_size']
 
         states = torch.stack(transition_dict['states']).to(self.device)
+        actions = []
+        try:
+            actions = torch.stack(transition_dict['actions']).to(self.device)
+        except TypeError as e:
+            print(f"update操作失败！dic[actions]:{transition_dict['actions']}, error:{e}")
+            exit()
 
-        #会出现action数据长度不一致的情况RuntimeError: stack expects each tensor to be equal size, but got [4] at entry 0 and [3] at entry 1
-        actions = torch.stack(transition_dict['actions']).to(
-            self.device)
         rewards = torch.tensor(transition_dict['rewards'],
                                dtype=torch.float).view(-1, 1).to(self.device)
         next_states = torch.stack(transition_dict['next_states']).to(self.device)

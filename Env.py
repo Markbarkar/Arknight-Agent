@@ -19,7 +19,6 @@ from screenshot import Cutter
 class ArknightEnv(Env):
 
     # TODO:完成observation_space观察空间的设计(暂定为【在场敌人数、保卫点数、部署费用】，后期可以考虑加的参数：一个锚定敌人与蓝门距离的参数、总敌人数等)
-    # TODO: 完善干员的索引，是用名字来输入action还是用id
 
     class ActType(Enum):
         PLACE = 0
@@ -80,11 +79,6 @@ class ArknightEnv(Env):
     def enemy_to_point(self):
         return 0
 
-    # @property
-    # def observation_space(self):
-    #     # [部署费用， 在场敌人数量， 保卫点数]
-    #     return spaces.MultiDiscrete([self.fee, self.enemy, self.point])
-
     def __init__(self):
 
         # 观测空间，暂定128*128大小
@@ -118,10 +112,11 @@ class ArknightEnv(Env):
         # 视觉处理
         self.cutter = Cutter()
 
-        # 在场干员列表
+        # 在场干员列表,是相对于player_list的序号列表
         # self.position_list = [{'id': 6, 'position': (1,2), 'ditection': 'DOWN'}]
         self.position_list = []
 
+        # TODO:搞定方块列表的处理
         # 可放置的方块列表
         self.available_position_list = [1,2,3,4,5,6,7]
         # 干员数
@@ -158,7 +153,6 @@ class ArknightEnv(Env):
     # 根据输入动作进行推演，返回observation, reward, terminated, truncated, info
     def step(self, arg:Tuple) -> Tuple[Tensor, float, bool, bool, dict]:
         action, type = arg
-        # TODO:完善step步骤, 添加检测,包括费用不足/干员已放置/干员未放置/地块已放置/地块不可放置
         # print(f"action:{ArknightEnv.ActType(type)}")
         if type == 0:
             self.place(self.player_list[action[0]], self.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
@@ -206,11 +200,10 @@ class ArknightEnv(Env):
     def place(self, name, position, time, direction: DirectionType):
         id = self.player_list.index(name)
         left_top = (0, 0)
-        transform_id = 0
         try:
-            print(f"place前费用:{self.fee}")
-            print(f"place前可用干员列表:{self.available_player_list}")
-            print(f"place前已放置干员列表:{self.position_list}")
+            # print(f"place前费用:{self.fee}")
+            # print(f"place前可用干员列表:{self.available_player_list}")
+            # print(f"place前已放置干员列表:{self.position_list}")
             # 在可选干员里的序号
             transform_id = self.available_player_list.index(name)
         except ValueError as e:
@@ -236,9 +229,9 @@ class ArknightEnv(Env):
         # self.available_player_list.remove(self.available_player_list[transform_id])
         self.player_status_list[id] = False
         self.fee -= self.player_fee_list[self.player_list.index(name)]
-        print(f"place后费用:{self.fee}")
-        print(f"place后可部署干员:{self.available_player_list}")
-        print(f"place后已放置干员列表:{self.position_list}")
+        # print(f"place后费用:{self.fee}")
+        # print(f"place后可部署干员:{self.available_player_list}")
+        # print(f"place后已放置干员列表:{self.position_list}")
 
     def remove(self, name):
         id = self.player_list.index(name)
@@ -251,26 +244,26 @@ class ArknightEnv(Env):
         pyautogui.moveRel(-150, -150)
         pyautogui.click()
 
-        # 根据name计算插入到待定干员的序列（保证顺序）
-        # i = 0
-        # while i < len(self.caculate_list) and id > self.caculate_list[i]:
-        #     i += 1
-        # self.available_player_list.insert(id, name)
-        # self.caculate_list.insert(i, id)
-
         self.player_status_list[id] = True
         print(f"撤回干员{name}")
-        print(self.available_player_list)
-        print(self.player_status_list)
+        print(f"撤退后放置的干员：{self.available_player_list}")
+        print(f"撤退后的干员状态{self.player_status_list}")
 
     def skill(self, name):
         id = self.player_list.index(name)
+        target = []
+        # try:
         target = next((item for item in self.position_list if item.get("id") == id), None)
         target_postion = target.get("position")
+        # except AttributeError as e:
+        #     print(f"skill错误！id:{id}, name:{name}, target:{target}")
+        #     exit()
         pyautogui.click(target_postion[0], target_postion[1])
         pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
         pyautogui.moveRel(200, 170)
         pyautogui.click()
+        print(f"干员技能使用{name}")
+
 
     def output_dic(self):
         res = {
@@ -300,4 +293,4 @@ if __name__ == '__main__':
     # env.place("克洛斯", platform_1, 0.7, ArknightEnv.DirectionType.DOWN)
     # env.remove("桃金娘")
 
-    character_valid = (torch.arange(env.num_characters).unsqueeze(0) >= torch.tensor(env.fee).unsqueeze(1))
+    # character_valid = (torch.arange(env.num_characters).unsqueeze(0) >= torch.tensor(env.fee).unsqueeze(1))
