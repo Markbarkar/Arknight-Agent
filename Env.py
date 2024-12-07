@@ -60,14 +60,15 @@ class ArknightEnv(Env):
     @property
     def available_player_list(self):
         # 已放置干员列表
-        result = [self.player_list[i] for i, b in enumerate(self.player_status_list) if b]
+        # TODO:添加费用限制
+        result = [self.player_list[i] for i, b in enumerate(self.player_status_list) if b and self.player_list[i] in self.fee_available_player_list]
         return result
 
     # 同上，是index版
     @property
     def available_player_list_id(self):
         # 已放置干员列表
-        result = [i for i, b in enumerate(self.player_status_list) if b]
+        result = [i for i, b in enumerate(self.player_status_list) if b and self.player_list[i] in self.fee_available_player_list]
         return result
 
     @property
@@ -166,14 +167,12 @@ class ArknightEnv(Env):
         action, type = arg
         if type == 0:
             self.place(self.player_list[action[0]], self.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
-            self.player_status_list[action[1]] = False
         elif type == 1:
             self.skill(self.player_list[action[1]])
         elif type == 2:
             self.remove(self.player_list[action[1]])
-            self.player_status_list[action[1]] = True
 
-        print(f"postion_list:{[self.available_position_list]}")
+        print(f"postion_list:{self.available_position_list}")
 
         # 环境更新
         self.update()
@@ -242,6 +241,7 @@ class ArknightEnv(Env):
         self.position_list.append({'id': id, 'position': position, 'ditection': direction})
         # self.available_player_list.remove(self.available_player_list[transform_id])
         self.player_status_list[id] = False
+        self.position_status_list[id] = False
         self.fee -= self.player_fee_list[self.player_list.index(name)]
         # print(f"place后费用:{self.fee}")
         # print(f"place后可部署干员:{self.available_player_list}")
@@ -259,10 +259,11 @@ class ArknightEnv(Env):
         pyautogui.click()
 
         self.player_status_list[id] = True
-        self.position_list.remove(id)
-        print(f"撤回干员{name}")
-        print(f"撤退后放置的干员：{self.available_player_list}")
-        print(f"撤退后的干员状态{self.player_status_list}")
+        self.position_status_list[id] = True
+        self.position_list = [i for i in self.position_list if i.get("id") != id]
+        # print(f"撤回干员{name}")
+        # print(f"撤退后放置的干员：{self.available_player_list}")
+        # print(f"撤退后的干员状态{self.player_status_list}")
 
     def skill(self, name):
         id = self.player_list.index(name)
@@ -292,6 +293,7 @@ class ArknightEnv(Env):
         }
         return res
 
+    # 处理交互部分，获取action返回state
     def client(self):
         url = 'http://127.0.0.1:6006/action'
         done = False

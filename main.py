@@ -49,8 +49,11 @@ for i in range(10):
                 action, type = agent.take_action(state, env.output_dic())
 
                 next_state, reward, done, _, _ = env.step((action, type))
-                tqdm.write(f"action:{str(action)}, reward:{reward}")
+                # tqdm.write(f"action:{str(action)}, reward:{reward}")
 
+                print(f"可用干员:{env.available_player_list}, 费用：{env.fee}, 已放置干员：{env.position_list}")
+                print(f"可放置方块:{env.available_position_list}, 已放置方块:{env.position_status_list}")
+                print(f"费用可选干员:{env.fee_available_player_list}")
                 # 这里的done存储用浮点数，更新网络计算q值的时候结束时q为0，要用到done
                 replay_buffer.add(state, action, reward, next_state, float(done))
 

@@ -20,7 +20,7 @@ class ReplayBuffer:
         self.buffer = collections.deque(maxlen=capacity)  # 队列,先进先出
 
     def add(self, state, action, reward, next_state, done): # 将数据加入buffer
-        print(f"buffer添加！buffer:{self.buffer}")
+        # print(f"buffer添加！buffer:{self.buffer}")
         self.buffer.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
@@ -139,6 +139,7 @@ class DQN:
                 action = torch.tensor([random.choice(env['available_player_list_id']), random.choice(env['available_position_list']), random.randint(0, 3)])
             # 使用干员技能
             elif i == 1:
+                # TODO:处理没有费用，场上又没有任何干员在场的必须等待的情况
                 action = torch.tensor([0, random.choice(env['position_list_id']), 1])
             # 撤退干员
             elif i == 2:
@@ -281,24 +282,24 @@ class DQN:
 
 if __name__ == '__main__':
     lr = 2e-3
-    num_episodes = 500
-    hidden_dim = 128
-    gamma = 0.98
-    epsilon = 0.01
-    target_update = 10
-    buffer_size = 10000
-    # 经验回放池的最低训练阈值
-    minimal_size = 500
-    batch_size = 64
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
-        "cpu")
-
-    env = ArknightEnv()
-    num_characters, num_positions, num_directions = env.action_space.spaces[0].nvec
-    state_dim = len(env.observation_space.nvec) # 对应 MultiDiscrete 的维度数量
-    agent = DQN(state_dim, hidden_dim, lr, gamma, epsilon,
-                target_update, device)
-    # action = agent.take_action(env)
-    print(agent.q_net(torch.tensor([2,2,3], dtype=torch.float32).to('cuda')))
+    # num_episodes = 500
+    # hidden_dim = 128
+    # gamma = 0.98
+    # epsilon = 0.01
+    # target_update = 10
+    # buffer_size = 10000
+    # # 经验回放池的最低训练阈值
+    # minimal_size = 500
+    # batch_size = 64
+    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+    #     "cpu")
+    #
+    # env = ArknightEnv()
+    # num_characters, num_positions, num_directions = env.action_space.spaces[0].nvec
+    # state_dim = len(env.observation_space.nvec) # 对应 MultiDiscrete 的维度数量
+    # agent = DQN(state_dim, hidden_dim, lr, gamma, epsilon,
+    #             target_update, device)
+    # # action = agent.take_action(env)
+    # print(agent.q_net(torch.tensor([2,2,3], dtype=torch.float32).to('cuda')))
 
     # print(action)
