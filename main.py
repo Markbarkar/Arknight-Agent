@@ -1,11 +1,9 @@
-from Env import ArknightEnv
-from time import sleep
-from screenshot import Cutter
-import keyboard
 import torch
-import torch.nn.functional as F
-from agent import DQN,ReplayBuffer
 from tqdm import tqdm
+
+from Env import ArknightEnv
+from agent import DQN, ReplayBuffer
+from screenshot import Cutter
 
 floor_1 = (1306, 407)
 platform_1 = (1155, 510)
@@ -28,9 +26,9 @@ buffer_size = 10000
 minimal_size = 5
 # 经验回放池随机抽取训练数（64）
 batch_size = 3
-replay_buffer = ReplayBuffer(buffer_size)
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
     "cpu")
+replay_buffer = ReplayBuffer(buffer_size)
 
 num_characters, num_positions, num_directions = env.action_space.spaces[0].nvec
 state_dim = len(env.observation_space.nvec)  # 对应 MultiDiscrete 的维度数量

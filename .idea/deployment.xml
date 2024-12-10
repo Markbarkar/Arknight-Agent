@@ -17,6 +17,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="root@region-9.autodl.pro:44877 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/root/autodl-tmp/Arknight" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
     </serverData>
     <option name="myAutoUpload" value="ALWAYS" />
   </component>

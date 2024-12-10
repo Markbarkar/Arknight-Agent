@@ -1,17 +1,15 @@
-import torch
-import numpy as np
-import random
-import gym
 import collections
+import random
+import time
 
-from pyparsing import null_debug_action
-from sympy import total_degree
-from torch import nn
-from tqdm import tqdm
+import numpy as np
+import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-import rl_utils
+from torch import nn
+
+
 # from Env import ArknightEnv
+
 
 class ReplayBuffer:
     ''' 经验回放池 '''
@@ -63,6 +61,9 @@ class Qnet(torch.nn.Module):
         # 撤退：[num_characters, 2]
         self.retreat_layer = torch.nn.Linear(hidden_dim, num_characters * 2)
 
+        # 等待0-3秒
+        self.wait_layer = torch.nn.Linear(hidden_dim, 3)
+
         self.num_characters = num_characters
         self.num_positions = num_positions
         self.num_directions = num_directions
@@ -72,17 +73,19 @@ class Qnet(torch.nn.Module):
         x = F.relu(self.fc1(x))  # 输入层
         x = F.relu(self.fc2(x))  # 隐藏层
 
-        # 分别计算 3 个动作的 Q 值
+        # 分别计算 4 个动作的 Q 值
         place_q = self.place_layer(x)
         skill_q = self.skill_layer(x)
         retreat_q = self.retreat_layer(x)
+        wait_q = self.wait_layer(x)
 
         # 调整输出形状
         place_q = place_q.view(-1, self.num_characters, self.num_positions, self.num_directions)
         skill_q = skill_q.view(-1, self.num_characters, 2)
         retreat_q = retreat_q.view(-1, self.num_characters, 2)
+        wait_q = wait_q.view(-1, 1)
 
-        return place_q, skill_q, retreat_q
+        return place_q, skill_q, retreat_q, wait_q
 
 
 class DQN:
@@ -123,10 +126,11 @@ class DQN:
             print("开始探索行为")
             # 场上没有干员，只能选择放置干员
             # 排除choice选择空列表时的报错
-
             if not env['available_player_list_id'] or not env['available_position_list']:
                 i = np.random.randint(1, 3)
-                # print(f"放置屏蔽！i:{i}")
+                if not env['position_list_id']:
+                    i = 3
+                    # print(f"放置屏蔽！i:{i}")
             elif not env['position_list_id']:
                 i = 0
                 # print(f"撤退/技能屏蔽！i:{i}")
@@ -139,16 +143,20 @@ class DQN:
                 action = torch.tensor([random.choice(env['available_player_list_id']), random.choice(env['available_position_list']), random.randint(0, 3)])
             # 使用干员技能
             elif i == 1:
-                # TODO:处理没有费用，场上又没有任何干员在场的必须等待的情况
-                action = torch.tensor([0, random.choice(env['position_list_id']), 1])
+                if not env['position_list_id']:
+                    time.sleep(2)
+                    print(f"没有费用且场上无干员，等待2秒")
+                else:
+                    action = torch.tensor([0, random.choice(env['position_list_id']), 5])
             # 撤退干员
             elif i == 2:
-                action = torch.tensor([0, random.choice(env['position_list_id']), 1])
+                action = torch.tensor([0, random.choice(env['position_list_id']), 6])
+            elif i == 3:
+                action = torch.tensor([0, random.randint(0, 3), 7])
             return action, i
         else:
             # print("开始最优行为")
             # 【部署费用， 在场敌人数， 保卫点数】
-
             """
             place_q[0][2][5] = [-0.7299, 1.1585, -0.2429, -0.3950]
             表示干员编号 2 放置在位置 5 的 4 个方向的 Q 值分别为：
@@ -160,19 +168,37 @@ class DQN:
             """
 
             # 采用分散动作头（Mult-head）的输出方法，输出每个动作的q值再比较
-            place_q, skill_q, retreat_q = self.q_net(state)
+            place_q, skill_q, retreat_q, wait_q = self.q_net(state)
 
             # 动作筛选
             batchsize, num_player, num_positions, directions = place_q.shape
 
+            available_high_player_id = [i for i in env['available_player_list_id'] if i in env['high_player_list']]
+            available_high_position = [i for i in env['available_position_list'] if i in env['high_floor_list_id']]
+            available_bottom_position = [i for i in env['available_position_list'] if
+                                         i not in env['high_floor_list_id']]
+
             # 构造干员掩码
             player_mask = torch.ones((1, num_player, 1, 1), dtype=torch.bool, device=place_q.device)
-            player_mask[:, env['available_player_list_id'], :, :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
+            # player_mask[:, env['available_player_list_id'], :, :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
             # 构造地块掩码
             position_mask = torch.ones((1, 1, num_positions, 1), dtype=torch.bool, device=place_q.device)
-            position_mask[:, :, env['available_position_list'], :] = False  # 不需要屏蔽的地块编号对应的位置设置为 False
+            # position_mask[:, :, env['available_position_list'], :] = False  # 不需要屏蔽的地块编号对应的位置设置为 False
+
             # 合并掩码 (batchsize, num_player, num_positions, directions)
             combined_mask = player_mask | position_mask
+
+            # TODO：筛选高台和地面
+            for player_id in env['available_player_list_id']:
+                if player_id in available_high_player_id:
+                    for position_id in available_high_position:
+                        # 设置对应的掩码为 False（表示该位置可用）
+                        combined_mask[:, player_id, position_id, :] = False
+                else:
+                    for position_id in available_bottom_position:
+                        # 设置对应的掩码为 False（表示该位置可用）
+                        combined_mask[:, player_id, position_id, :] = False
+
             # 应用掩码，将对应的 Q 值设置为 -inf
             place_q = place_q.masked_fill(combined_mask, float('-inf'))
 
@@ -192,24 +218,32 @@ class DQN:
             max_place_q = place_q.max().item()
             max_skill_q = skill_q.max().item()
             max_retreat_q = retreat_q.max().item()
+            max_wait_q = wait_q.max().item()
+
+            cal = np.array([max_place_q, max_skill_q, max_retreat_q, max_wait_q]).argmax()
             # print(f"放置q值{max_place_q},技能q值{max_skill_q}, 撤退q值{max_retreat_q}")
 
             # 比较最大 Q 值，选择动作类别
             # 放置
-            if max_place_q >= max_skill_q and max_place_q >= max_retreat_q:
+            if cal == 0:
                 # chosen_action = torch.argmax(place_q).item()  # 选择放置动作
                 max_indices = torch.unravel_index(place_q.argmax(), place_q.shape)
                 return torch.tensor([max_indices[1], max_indices[2], max_indices[3]]), 0
             # 技能
-            elif max_skill_q >= max_place_q and max_skill_q >= max_retreat_q:
+            elif cal == 1:
                 # chosen_action = torch.argmax(skill_q).item()  # 选择技能使用动作
                 max_indices = torch.unravel_index(skill_q.argmax(), skill_q.shape)
-                return torch.tensor([0, max_indices[1], max_indices[2]]), 1
+                return torch.tensor([0, max_indices[1], 5]), 1
             # 撤退
-            else:
+            elif cal == 2:
                 # chosen_action = torch.argmax(retreat_q).item()  # 选择撤退动作
                 max_indices = torch.unravel_index(retreat_q.argmax(), retreat_q.shape)
-                return torch.tensor([0, max_indices[1], max_indices[2]]), 2
+                return torch.tensor([0, max_indices[1], 6]), 2
+            # 等待
+            elif cal == 3:
+                max_indices = torch.unravel_index(wait_q.argmax(), wait_q.shape)
+                return torch.tensor([0, max_indices[1], 7]), 3
+
 
 
 
@@ -231,50 +265,62 @@ class DQN:
         dones = torch.tensor(transition_dict['dones'],
                              dtype=torch.float).view(-1, 1).to(self.device)
 
-        # q_values = self.q_net(states).gather(1, actions)  # Q值
-        place_q, skill_q, retreat_q = self.q_net(states)
-        # print(f"actions:{actions}")
+        place_q, skill_q, retreat_q, wait_q = self.q_net(states)
 
-        # 这里的2是batchsize
-        current_place_q = place_q[torch.arange(batch_size), actions[:, 0], actions[:, 1], actions[:, 2]]
-        # current_skill_q = skill_q[torch.arange(batch_size), actions[:, 3], actions[:, 4]]
-        # current_retreat_q = retreat_q[torch.arange(batch_size), actions[:, 5], actions[:, 6]]
+        place_count = torch.sum(actions[:, 2] <= 4).item()
+        skill_count = torch.sum(actions[:, 2] == 5).item()
+        retreat_count = torch.sum(actions[:, 2] == 6).item()
+        wait_count = torch.sum(actions[:, 2] == 7).item()
 
+        # FIXME:每个动作分出不同的actions再求q值吧，应该是一维的数据和后面维度的数据对不上
+        current_place_q = current_skill_q = current_retreat_q = current_wait_q = 0
+        if place_count != 0:
+            current_place_q = place_q[
+                torch.arange(place_count), actions[actions[:, 2] <= 4, 0], actions[actions[:, 2] <= 4, 1], actions[
+                    actions[:, 2] <= 4, 2]]
+        if skill_count != 0:
+            current_skill_q = skill_q[
+                torch.arange(skill_count), actions[actions[:, 2] == 5, 1], actions[actions[:, 2] == 5, 2]]
+        if retreat_count != 0:
+            current_retreat_q = retreat_q[
+                torch.arange(retreat_count), actions[actions[:, 2] == 6, 1], actions[actions[:, 2] == 6, 2]]
+        if wait_count != 0:
+            current_wait_q = wait_q[torch.arange(wait_count), actions[actions[:, 2] == 7, 1]]
+
+        # print( current_place_q, current_skill_q, current_retreat_q, current_wait_q)
         # 下个状态的最大Q值
         with torch.no_grad():
-            next_place_q, next_skill_q, next_retreat_q = self.target_q_net(next_states)
-            # print(f"next_place_q:{next_place_q}")
-            # 目标值
-            # 对 next_place_q 的所有动作组合取最大值
-            # next_place_q_max = next_place_q.view(4, -1).max(dim=1)[0]  # (batch_size,)
-
-            # target_place_q = rewards + gamma * next_place_q_max * (1 - dones)
-            target_place_q = rewards + gamma * next_place_q.max().item()
-            # target_skill_q = rewards + gamma * next_skill_q.max().item()
-            # target_retreat_q = rewards + gamma * next_retreat_q.max().item()
-
-            # target_place_q = rewards + gamma * next_place_q.max(dim=1)[0] * (1 - dones)
-            # target_skill_q = rewards + gamma * next_skill_q.max(dim=1)[0] * (1 - dones)
-            # target_retreat_q = rewards + gamma * next_retreat_q.max(dim=1)[0] * (1 - dones)
+            next_place_q, next_skill_q, next_retreat_q, next_wait_q = self.target_q_net(next_states)
+            if place_count != 0:
+                target_place_q = rewards + gamma * next_place_q.max().item()
+            if skill_count != 0:
+                target_skill_q = rewards + gamma * next_skill_q.max().item()
+            if retreat_count != 0:
+                target_retreat_q = rewards + gamma * next_retreat_q.max().item()
+            if wait_count != 0:
+                target_wait_q = rewards + gamma * next_retreat_q.max().item()
 
         # 计算每个动作头的损失
-        loss_place = nn.MSELoss()(current_place_q, target_place_q)
-        # loss_skill = nn.MSELoss()(current_skill_q, target_skill_q)
-        # loss_retreat = nn.MSELoss()(current_retreat_q, target_retreat_q)
+        total_loss = torch.tensor([0]).to(self.device)
+        if place_count != 0:
+            total_loss += nn.MSELoss()(current_place_q, target_place_q)
+        if skill_count != 0:
+            total_loss += skill_count or nn.MSELoss()(current_skill_q, target_skill_q)
+        if retreat_count != 0:
+            total_loss += retreat_count or nn.MSELoss()(current_retreat_q, target_retreat_q)
+        if wait_count != 0:
+            total_loss += wait_count or nn.MSELoss()(current_wait_q, target_wait_q)
 
-        # 总损失
-        total_loss = loss_place
-        # total_loss = loss_place + loss_skill + loss_retreat
-
+        # loss = nn.MSELoss()(current_q_values, target_q_values)
         # 反向传播更新网络
         self.optimizer.zero_grad()
+        # total_loss.backward()
         total_loss.backward()
         self.optimizer.step()
 
         # 更新目标网络
         if self.count % self.target_update == 0:
-            self.target_q_net.load_state_dict(
-                    self.q_net.state_dict())
+            self.target_q_net.load_state_dict(self.q_net.state_dict())
         self.count += 1
 
         return total_loss.item()
@@ -282,23 +328,31 @@ class DQN:
 
 if __name__ == '__main__':
     lr = 2e-3
-    # num_episodes = 500
-    # hidden_dim = 128
-    # gamma = 0.98
-    # epsilon = 0.01
-    # target_update = 10
-    # buffer_size = 10000
-    # # 经验回放池的最低训练阈值
-    # minimal_size = 500
-    # batch_size = 64
-    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
-    #     "cpu")
+    num_episodes = 500
+    hidden_dim = 128
+    gamma = 0.98
+    epsilon = 0.01
+    target_update = 10
+    buffer_size = 10000
+    # 经验回放池的最低训练阈值
+    minimal_size = 500
+    batch_size = 3
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+        "cpu")
     #
     # env = ArknightEnv()
     # num_characters, num_positions, num_directions = env.action_space.spaces[0].nvec
-    # state_dim = len(env.observation_space.nvec) # 对应 MultiDiscrete 的维度数量
+    # state_dim = len(env.observation_space.nvec)  # 对应 MultiDiscrete 的维度数量
     # agent = DQN(state_dim, hidden_dim, lr, gamma, epsilon,
     #             target_update, device)
+    # pq, sq, rq, wq = agent.q_net(env.reset())
+    # cal = np.array([pq.max().item(), sq.max().item(), rq.max().item(), wq.max().item()]).argmax()
+    # max_wq = torch.unravel_index(wq.argmax(), wq.shape)
+    # max_pq = torch.unravel_index(pq.argmax(), pq.shape)
+    # max_sq = torch.unravel_index(sq.argmax(), sq.shape)
+    # max_rq = torch.unravel_index(rq.argmax(), rq.shape)
+    # current_place_q = pq[torch.arange(batch_size), actions[:, 0], actions[:, 1], actions[:, 2]]
+    # print(wq.max().item())
     # # action = agent.take_action(env)
     # print(agent.q_net(torch.tensor([2,2,3], dtype=torch.float32).to('cuda')))
 

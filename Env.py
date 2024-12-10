@@ -1,18 +1,16 @@
+import os
 import random
-from functools import lru_cache
+import time
+from enum import Enum
 from typing import Tuple, Optional, Union, List
+
 import pyautogui
-import numpy as np
+import requests
 import torch
 from gym import Env, spaces
-from gym.core import ObsType, RenderFrame
-from enum import Enum
-from time import sleep
-import os
-from matplotlib.style.core import available
+from gym.core import RenderFrame
 from torch import Tensor
 from ultralytics import YOLO
-import requests
 
 from screenshot import Cutter
 
@@ -25,6 +23,7 @@ class ArknightEnv(Env):
         PLACE = 0
         SKILL = 1
         REMOVE = 2
+        WAIT = 4
 
     class DirectionType(Enum):
         LEFT = 0
@@ -60,7 +59,6 @@ class ArknightEnv(Env):
     @property
     def available_player_list(self):
         # 已放置干员列表
-        # TODO:添加费用限制
         result = [self.player_list[i] for i, b in enumerate(self.player_status_list) if b and self.player_list[i] in self.fee_available_player_list]
         return result
 
@@ -84,7 +82,7 @@ class ArknightEnv(Env):
     @property
     # 可放置的方块列表
     def available_position_list(self):
-        res = [i for i, b in enumerate(self.player_status_list) if b ]
+        res = [i for i, b in enumerate(self.position_status_list) if b]
         return res
 
     def __init__(self):
@@ -102,17 +100,13 @@ class ArknightEnv(Env):
         self.select_distance_row = -250
         self.select_distance_col = 100
 
+        self.action_time = 1
+
         # TODO: 将干员信息配置成外部json文件
         self.player_fee_list = [25, 17, 16, 16, 16, 9, 8, 9]
 
-        # 每个可放置地块的坐标列表，序号越小越靠近蓝门
-        self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
-               (1281, 261), (1130, 389), (1321, 519), (1502, 671),
-               (1137, 267), (985, 379), (1160, 520), (1338, 653),
-               (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
 
-        self.player_list = ['维什戴尔','泡普卡', '史都华德', '苏苏洛', '卡提', '克洛斯', '桃金娘', '芬']
-        self.player_status_list = [True for _ in self.player_list]
+
 
         # 部署费用
         self.fee = 99
@@ -126,13 +120,23 @@ class ArknightEnv(Env):
         # self.position_list = [{'id': 6, 'position': (1,2), 'ditection': 'DOWN'}]
         self.position_list = []
 
-        # TODO:搞定方块列表的处理
-
-        # 干员数
+        # 干员
+        self.player_list = ['维什戴尔', '泡普卡', '史都华德', '苏苏洛', '卡提', '克洛斯', '桃金娘', '芬']
+        self.high_player_list = ['维什戴尔', '史都华德', '苏苏洛', '克洛斯']
         self.num_characters = len(self.player_list)
+        self.player_status_list = [True for _ in self.player_list]
+
         # 可放置方块数
         self.num_positions = 10
         self.position_status_list = [True for _ in range(self.num_positions)]
+        # 每个可放置地块的坐标列表，序号越小越靠近蓝门
+        self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
+                                       (1281, 261), (1130, 389), (1321, 519), (1502, 671),
+                                       (1137, 267), (985, 379), (1160, 520), (1338, 653),
+                                       (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
+
+        self.high_floor_list_id = [1, 4, 8, 10, 12, 13, 15, 17]
+
         # 朝向
         self.num_directions = 4
         self.action_max_dim = (len(self.player_list), self.num_positions, 4)
@@ -141,7 +145,8 @@ class ArknightEnv(Env):
         self.action_space = spaces.Tuple((
             spaces.MultiDiscrete([self.num_characters, self.num_positions, self.num_directions]),  # 放置干员
             spaces.MultiDiscrete([self.num_characters, 2]),  # 技能使用
-            spaces.MultiDiscrete([self.num_characters, 2])  # 撤退
+            spaces.MultiDiscrete([self.num_characters, 2]),
+            spaces.MultiDiscrete([1, 1])  # 等待
         ))
 
         # 指的是离散值，即观察空间有多大，值的取值范围是多少【部署费用， 在场敌人数， 保卫点数】
@@ -166,11 +171,15 @@ class ArknightEnv(Env):
     def step(self, arg:Tuple) -> Tuple[Tensor, float, bool, bool, dict]:
         action, type = arg
         if type == 0:
-            self.place(self.player_list[action[0]], self.position_location_list[action[1]], 0.7, ArknightEnv.DirectionType(action[2].item()))
+            self.place(self.player_list[action[0]], self.position_location_list[action[1]], self.action_time,
+                       ArknightEnv.DirectionType(action[2].item()))
         elif type == 1:
             self.skill(self.player_list[action[1]])
         elif type == 2:
             self.remove(self.player_list[action[1]])
+        elif type == 3:
+            print("等待.")
+            time.sleep(action[0])
 
         print(f"postion_list:{self.available_position_list}")
 
@@ -179,16 +188,13 @@ class ArknightEnv(Env):
 
         # 下一个state【部署费用， 在场敌人数， 保卫点数】
         state = torch.tensor([self.fee, self.enemy, self.point], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
-        # state = torch.rand((3, ),) * torch.tensor([10, 3, 3])
-        # state = state.round().int()
-        # reward = -1.0 + random.random() * 2
-
         # 奖励函数
         reward = -0.2 * self.fee + -1 * self.enemy + 1 * self.point
-
-        # TODO: 随机延迟一局的长度，方便测试数据观察，更新结束条件
+        # FIXME: 随机延迟一局的长度，方便测试数据观察，更新结束条件
         done = True if random.randint(0, 4) == 0 else False
 
+        if done == True:
+            print("游戏结束")
         truncated = False
         info = {}
         return state, reward, done, truncated, info
@@ -203,6 +209,7 @@ class ArknightEnv(Env):
 
         return torch.tensor([self.fee, 0, 0], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
 
+    # TODO:扫描地块
     def scan_floor(self):
         self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
                (1281, 261), (1130, 389), (1321, 519), (1502, 671),
@@ -224,6 +231,7 @@ class ArknightEnv(Env):
             return
 
         # 这里不能直接用id了，因为放置干员后下面的干员列表会出现变化，要通过转化才能用
+        # 选中干员位置
         start = (left_top[0] + 1760 + (-180 * transform_id), left_top[1] + 1010)
         pyautogui.moveTo(start[0], start[1])
         pyautogui.dragTo(position[0] + self.transfer_distance_row, position[1] + self.transfer_distance_col, duration=time)
@@ -238,7 +246,7 @@ class ArknightEnv(Env):
             pyautogui.dragRel(0, 200, duration=time)
 
         print(f"放置干员{name}在{position},方向为{direction}")
-        self.position_list.append({'id': id, 'position': position, 'ditection': direction})
+        self.position_list.append({'id': id, 'position': position, 'ditection': direction.value})
         # self.available_player_list.remove(self.available_player_list[transform_id])
         self.player_status_list[id] = False
         self.position_status_list[id] = False
@@ -289,25 +297,21 @@ class ArknightEnv(Env):
             'player_fee_list':self.player_fee_list,
             'fee':self.fee,
             'available_player_list_id':self.available_player_list_id,
-            'position_list_id':self.position_list_id
+            'position_list_id': self.position_list_id,
+            'high_floor_list_id': self.high_floor_list_id,
+            'high_player_list': [self.player_list.index(i) for i in self.high_player_list]
         }
         return res
 
-    # 处理交互部分，获取action返回state
+    # 处理交互部分，获取action返回state,即一局游戏
     def client(self):
         url = 'http://127.0.0.1:6006/action'
         done = False
         while not done:
             # 模拟环境状态
             # 'position_list': self.position_list,
-            state = {"state": [self.fee, self.enemy, self.point], "reward": self.reward, "done": True, "dic": {
-                'available_position_list': self.available_position_list,
-                'action_max_dim': self.action_max_dim,
-                'player_fee_list': self.player_fee_list,
-                'fee': self.fee,
-                'available_player_list_id': self.available_player_list_id,
-                'position_list_id': self.position_list_id
-            }}
+            state = {"state": [self.fee, self.enemy, self.point], "reward": self.reward, "done": True,
+                     "dic": self.output_dic()}
             # POST 请求发送状态数据
             response = requests.post(url, json=state)
             print("Sending state:", state)
@@ -325,7 +329,7 @@ if __name__ == '__main__':
     # platform_1 = (1155, 510)
     # floor_2 = (1155, 400)
     # # 测试发现0.5s的操作似乎会拖动中断
-    # env.place("桃金娘", floor_1, 0.7, ArknightEnv.DirectionType.LEFT)
+    env.place("泡普卡", env.position_location_list[2], 1, ArknightEnv.DirectionType.LEFT)
     # sleep(15)
     # env.skill("桃金娘")
     # env.place("芬", floor_2, 0.7, ArknightEnv.DirectionType.LEFT)
