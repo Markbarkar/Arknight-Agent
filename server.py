@@ -1,11 +1,11 @@
-from flask import Flask, request, jsonify
-from agent import DQN, ReplayBuffer
-import torch
-from queue import Queue
 import threading
-import time
-import random
-from gym import Env, spaces
+from queue import Queue
+
+import torch
+from flask import Flask, request, jsonify
+from gym import spaces
+
+from agent import DQN, ReplayBuffer
 
 app = Flask(__name__)
 
@@ -50,7 +50,7 @@ class server():
                 data = self.request_queue.get()
 
                 state, reward, done, env_dic = data.get("state"), data.get("reward"), data.get("done"), data.get("dic")
-                print(f"Received state: {state}, reward: {reward}, done:{done}")
+                # print(f"Received state: {state}, reward: {reward}, done:{done}")
 
                 episode_return += reward
 
@@ -72,7 +72,7 @@ class server():
 
                 last_action = action
                 last_state = state
-                print(f"Generated action: {action}")
+                # print(f"Generated action: {action}")
 
                 # 将结果放入响应队列
                 self.response_queue.put((action, type))

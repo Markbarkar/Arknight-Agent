@@ -1,9 +1,10 @@
 import os
-import random
 import time
 from enum import Enum
 from typing import Tuple, Optional, Union, List
 
+import cv2
+import numpy as np
 import pyautogui
 import requests
 import torch
@@ -48,8 +49,14 @@ class ArknightEnv(Env):
     """
 
     """
-    NOTE: !!只需要更新fee和position_list就可以自动更新available_player_list!!
+    NOTE: !!只需要更新fee、position_list、player_freeze_list就可以自动更新available_player_list!!
     """
+
+    # 进入冷却状态的干员
+    @property
+    def freeze_player_list_id(self):
+        return [i for i, b in enumerate(self.player_freeze_list) if b]
+
     # 根据fee进行自动更新
     @property
     def fee_available_player_list(self):
@@ -58,16 +65,15 @@ class ArknightEnv(Env):
     # 根据position_list和fee_available_player_list自动更新，可用干员列表
     @property
     def available_player_list(self):
-        # 已放置干员列表
-        result = [self.player_list[i] for i, b in enumerate(self.player_status_list) if b and self.player_list[i] in self.fee_available_player_list]
-        return result
+        # 可放置干员列表
+        return [self.player_list[i] for i in self.available_player_list_id]
 
     # 同上，是index版
     @property
     def available_player_list_id(self):
-        # 已放置干员列表
-        result = [i for i, b in enumerate(self.player_status_list) if b and self.player_list[i] in self.fee_available_player_list]
-        return result
+        # 可放置干员列表
+        return [i for i, b in enumerate(self.player_status_list) if
+                b and (self.player_list[i] in self.fee_available_player_list) and (i not in self.freeze_player_list_id)]
 
     @property
     def position_list_id(self):
@@ -97,24 +103,24 @@ class ArknightEnv(Env):
         self.transfer_distance_col = -30
 
         # 选择干员时出现的坐标偏移值
-        self.select_distance_row = -250
-        self.select_distance_col = 100
+        # self.select_distance_row = -250
+        # self.select_distance_col = 100
+        self.skill_button_position = (1277, 677)
+        self.remove_button_position = (860, 358)
 
         self.action_time = 1
 
         # TODO: 将干员信息配置成外部json文件
         self.player_fee_list = [25, 17, 16, 16, 16, 9, 8, 9]
 
-
-
-
         # 部署费用
-        self.fee = 99
+        self.fee = 0
 
         self.reward = 0
         self.done = False
         # 视觉处理
         self.cutter = Cutter()
+        self.enemy_model = YOLO(os.path.join("model", "train3.pt"))
 
         # 在场干员列表,是相对于player_list的序号列表
         # self.position_list = [{'id': 6, 'position': (1,2), 'ditection': 'DOWN'}]
@@ -128,6 +134,7 @@ class ArknightEnv(Env):
 
         # 可放置方块数
         self.num_positions = 10
+        # 方块可放置状态
         self.position_status_list = [True for _ in range(self.num_positions)]
         # 每个可放置地块的坐标列表，序号越小越靠近蓝门
         self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
@@ -137,6 +144,8 @@ class ArknightEnv(Env):
 
         self.high_floor_list_id = [1, 4, 8, 10, 12, 13, 15, 17]
 
+        # 干员冷却状态
+        self.player_freeze_list = [False for _ in self.player_list]
         # 朝向
         self.num_directions = 4
         self.action_max_dim = (len(self.player_list), self.num_positions, 4)
@@ -159,9 +168,11 @@ class ArknightEnv(Env):
         if self.cutter.fee_number_detect(image, Cutter.ScreenType.PC) != -1:
             self.fee = self.cutter.fee_number_detect(image, Cutter.ScreenType.PC)
 
-        file_path = os.path.join("model", "train3.pt")
-        self.enemy = len(self.cutter.enemy_detect(image, YOLO(file_path), Cutter.ScreenType.PC).boxes)
+        # file_path = os.path.join("model", "train3.pt")
+        self.enemy = len(self.cutter.enemy_detect(image, self.enemy_model, Cutter.ScreenType.PC).boxes)
         self.point = self.cutter.point_number_detect(image, Cutter.ScreenType.PC)
+        print(f"费用：{self.fee}, 敌人：{self.enemy}，保卫点{self.point}")
+        return self.cutter.end_detect(image)
 
     # 可视化处理
     def render(self) -> Optional[Union[RenderFrame, List[RenderFrame]]]:
@@ -181,17 +192,16 @@ class ArknightEnv(Env):
             print("等待.")
             time.sleep(action[0])
 
-        print(f"postion_list:{self.available_position_list}")
+        print(
+            f"可放置方块:{self.available_position_list}, 可放置干员列表:{self.available_player_list}，冷却干员id:{self.freeze_player_list_id}")
 
         # 环境更新
-        self.update()
+        done = self.update()
 
         # 下一个state【部署费用， 在场敌人数， 保卫点数】
         state = torch.tensor([self.fee, self.enemy, self.point], dtype=torch.float32).to(torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
         # 奖励函数
         reward = -0.2 * self.fee + -1 * self.enemy + 1 * self.point
-        # FIXME: 随机延迟一局的长度，方便测试数据观察，更新结束条件
-        done = True if random.randint(0, 4) == 0 else False
 
         if done == True:
             print("游戏结束")
@@ -224,8 +234,10 @@ class ArknightEnv(Env):
             # print(f"place前费用:{self.fee}")
             # print(f"place前可用干员列表:{self.available_player_list}")
             # print(f"place前已放置干员列表:{self.position_list}")
-            # 在可选干员里的序号
-            transform_id = self.available_player_list.index(name)
+
+            player_bottom_card_list = [i for i in range(self.num_characters) if i not in self.position_list_id]
+            # 在下方卡片里的序号
+            transform_id = player_bottom_card_list.index(id)
         except ValueError as e:
             print(f"{name}不在可放置干员列表！操作失败,error:{e}")
             return
@@ -234,7 +246,8 @@ class ArknightEnv(Env):
         # 选中干员位置
         start = (left_top[0] + 1760 + (-180 * transform_id), left_top[1] + 1010)
         pyautogui.moveTo(start[0], start[1])
-        pyautogui.dragTo(position[0] + self.transfer_distance_row, position[1] + self.transfer_distance_col, duration=time)
+        x, y = self.transform_site(position[0], position[1])
+        pyautogui.dragTo(x, y, duration=time)
 
         if direction == ArknightEnv.DirectionType.LEFT:
             pyautogui.dragRel(-200, 0, duration=time)
@@ -261,19 +274,25 @@ class ArknightEnv(Env):
         target_postion = target.get("position")
         pyautogui.click(target_postion[0], target_postion[1])
         # 这里加了选择干员时的偏移值，先保证鼠标锚定人物中心
-        pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
+        # pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
         # 这里是撤退按钮相对于干员中心的偏移值
-        pyautogui.moveRel(-150, -150)
-        pyautogui.click()
+        # pyautogui.moveRel(-150, -150)
+        pyautogui.click(self.remove_button_position[0], self.remove_button_position[1])
 
-        self.player_status_list[id] = True
+        # self.player_status_list[id] = True
+        # FIXME:加入冷却机制，更新冷却队列
+        # 放入冷却队列
+        self.player_freeze_list[id] = True
+        # 更新可放置方块列表
         self.position_status_list[id] = True
+        # 更新已放置干员列表
         self.position_list = [i for i in self.position_list if i.get("id") != id]
         # print(f"撤回干员{name}")
         # print(f"撤退后放置的干员：{self.available_player_list}")
         # print(f"撤退后的干员状态{self.player_status_list}")
 
     def skill(self, name):
+        # FIXME：加入技能冷却机制，不能连续的进行技能使用
         id = self.player_list.index(name)
         target = []
         # try:
@@ -283,9 +302,9 @@ class ArknightEnv(Env):
         #     print(f"skill错误！id:{id}, name:{name}, target:{target}")
         #     exit()
         pyautogui.click(target_postion[0], target_postion[1])
-        pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
-        pyautogui.moveRel(200, 170)
-        pyautogui.click()
+        # pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
+        # pyautogui.moveRel(200, 170)
+        pyautogui.click(self.skill_button_position[0], self.skill_button_position[1])
         print(f"干员技能使用{name}")
 
 
@@ -314,13 +333,19 @@ class ArknightEnv(Env):
                      "dic": self.output_dic()}
             # POST 请求发送状态数据
             response = requests.post(url, json=state)
-            print("Sending state:", state)
+            # print("Sending state:", state)
 
             data = response.json()
-            print("Received action:", data)
+            # print("Received action:", data)
 
             next_state, reward, done, _, _ = self.step((torch.tensor(data.get("action")), data.get("type")))
 
+    def transform_site(self, x, y):
+        matrix = np.load("transform_matrix.npy")
+        point = np.array([x, y, 1.0], dtype=np.float32)
+        transformed = np.dot(matrix, point)
+        tx, ty = transformed[0] / transformed[2], transformed[1] / transformed[2]
+        return tx, ty
 
 if __name__ == '__main__':
     env = ArknightEnv()
@@ -328,13 +353,52 @@ if __name__ == '__main__':
     # floor_1 = (1306, 407)
     # platform_1 = (1155, 510)
     # floor_2 = (1155, 400)
-    # # 测试发现0.5s的操作似乎会拖动中断
-    env.place("泡普卡", env.position_location_list[2], 1, ArknightEnv.DirectionType.LEFT)
-    # sleep(15)
-    # env.skill("桃金娘")
-    # env.place("芬", floor_2, 0.7, ArknightEnv.DirectionType.LEFT)
-    # sleep(10)
-    # env.place("克洛斯", platform_1, 0.7, ArknightEnv.DirectionType.DOWN)
-    # env.remove("桃金娘")
 
-    # character_valid = (torch.arange(env.num_characters).unsqueeze(0) >= torch.tensor(env.fee).unsqueeze(1))
+    # env.place("泡普卡", env.position_location_list[2], 1, ArknightEnv.DirectionType.LEFT)
+    # env.skill("泡普卡")
+
+    position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
+                              (1281, 261), (1130, 389), (1321, 519), (1502, 671),
+                              (1137, 267), (985, 379), (1160, 520), (1338, 653),
+                              (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
+    transfer_distance_row = 100
+    transfer_distance_col = -30
+    x, y = position_location_list[9]
+    ox, oy = x + transfer_distance_row, y + transfer_distance_col
+
+    # 偏移前的坐标
+    src_points = np.float32([
+        [426, 289], [575, 282], [714, 280], [856, 285], [999, 268], [1137, 265], [1284, 265], [1435, 261],
+        [385, 385], [543, 369], [703, 378], [863, 385], [994, 389], [1156, 390], [1296, 392], [1145, 393],
+        [325, 652], [495, 647], [678, 652], [840, 648], [1015, 665], [1166, 668], [1339, 668], [1504, 661],
+        [305, 825], [485, 822], [656, 823], [841, 823], [1007, 814], [1193, 809], [1373, 814], [1546, 818],
+
+    ])
+
+    # 偏移后的坐标
+    dst_points = np.float32([
+        [612, 362], [734, 343], [852, 330], [980, 317], [1109, 286], [1243, 271], [1372, 254], [1518, 241],
+        [587, 453], [709, 431], [845, 418], [985, 409], [1115, 402], [1258, 390], [1393, 374], [1547, 359],
+        [552, 672], [692, 656], [839, 660], [979, 652], [1139, 649], [1280, 636], [1438, 623], [1605, 607],
+        [471, 824], [693, 813], [832, 809], [985, 799], [1145, 783], [1310, 770], [1485, 754], [1658, 742],
+    ])
+
+    # 使用仿射变换拟合
+    matrix, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
+
+    np.save("transform_matrix.npy", matrix)
+
+    # 测试映射函数
+    # def transform_point(x, y, matrix):
+    #     point = np.array([x, y, 1.0], dtype=np.float32)
+    #     transformed = np.dot(matrix, point)
+    #     tx, ty = transformed[0] / transformed[2], transformed[1] / transformed[2]
+    #     return tx, ty
+
+    # 测试示例
+    x, y = position_location_list[8]
+    x_new, y_new = env.transform_site(x, y)
+    print(f"偏移后坐标: ({x_new:.2f}, {y_new:.2f})")
+    pyautogui.moveTo(x_new, y_new)
+
+    # pyautogui.dragTo(ox, oy)

@@ -1,10 +1,11 @@
-import pyautogui
-import time
-import cv2
-import pytesseract
-from enum import Enum
-import numpy as np
 import re
+import time
+from enum import Enum
+
+import cv2
+import numpy as np
+import pyautogui
+import pytesseract
 from ultralytics import YOLO
 
 
@@ -16,6 +17,8 @@ class Cutter:
 
         self.mumu_point_roi_coords = (1010, 0, 1200, 200)
         self.phone_point_roi_coords = (0, 0, 1000, 1400)
+
+        self.mumu_endpoint_roi_coords = (121, 831, 290, 924)
 
         # 横向大概25， 纵向130， 蓝门前【1437， 400】
         self.mumu_enemy_point_coords = ()
@@ -68,7 +71,7 @@ class Cutter:
     def enemy_detect(self, image, model:YOLO, type: ScreenType):
         # image = pyautogui.screenshot(region=self.screen_parm)
         # image = cv2.imread('res_image/number.png')
-        res = model(image)[0]
+        res = model.predict(image, verbose=False)[0]
         return res
 
     # 连续截屏
@@ -143,40 +146,39 @@ class Cutter:
         # cv2.destroyAllWindows()
 
         res = pytesseract.image_to_string(denoised_image, config='--psm 6')
-        # # 查找轮廓
-        # contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # recognized_numbers = []
-        #
-        # for cnt in contours:
-        #     x, y, w, h = cv2.boundingRect(cnt)
-        #     # 筛选合理大小的轮廓
-        #     if 10 < w < 100 and 10 < h < 100:  # 假设数字的宽高在此范围内
-        #         roi = binary_image[y:y + h, x:x + w]
-        #         # 使用 OCR 识别数字
-        #         config = "--psm 10 -c tessedit_char_whitelist=0123456789"
-        #         number = pytesseract.image_to_string(roi, config=config).strip()
-        #         recognized_numbers.append(number)
-        #
-        #         # 可视化识别
-        #         cv2.rectangle(binary_image, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        #         cv2.putText(binary_image, number, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
         return res
+
+    def end_detect(self, image):
+        if isinstance(image, str):
+            # 读取图像并转换为灰度
+            image = cv2.imread(image)
+        else:
+            image = np.array(image)
+        x1, y1, x2, y2 = self.mumu_endpoint_roi_coords
+        region = image[y1:y2, x1:x2]
+        region = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+        # cv2.imshow("11", region)
+        # cv2.waitKey(0)  # 等待按键以关闭窗口
+        # cv2.destroyAllWindows()
+        return np.all(region <= 20)
 
 
 if __name__ == '__main__':
     cutter = Cutter()
+    image = pyautogui.screenshot(region=cutter.screen_parm)
+    print(cutter.end_detect(image, 121, 831, 290, 924))
 
     # cutter.image_stream_shot()
-    model = YOLO("model/train3.pt")
+    # model = YOLO("model/train3.pt")
     # cutter.image_stream_enemy_detect(model, Cutter.ScreenType.PC)
 
     # print(cutter.point_number_detect(Cutter.ScreenType.PC))
     # image = pyautogui.screenshot(region=cutter.screen_parm)
-    image = cv2.imread('res_image/number.png')
-    res = cutter.enemy_detect(image, model, Cutter.ScreenType.PC)
+    # image = cv2.imread('res_image/number.png')
+    # res = cutter.enemy_detect(image, model, Cutter.ScreenType.PC)
 
-    print(res.names.get(res.boxes.cls.item()), len(res.boxes))
+    # print(res.names.get(res.boxes.cls.item()), len(res.boxes))
     # image_path = 'res_image/number.png'
     # mumu_roi_coords = (1740, 700, 2000, 860)  # 定义 ROI 区域，格式为 (x_start, y_start, x_end, y_end)
     # phone_roi_coords = (2550, 800, 2700, 960)
