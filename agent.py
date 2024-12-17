@@ -90,23 +90,18 @@ class Qnet(torch.nn.Module):
 
 class DQN:
     """ DQN算法 """
-    def __init__(self, state_dim, hidden_dim, learning_rate, gamma,
+
+    def __init__(self, state_dim, hidden_dim, action_dim, learning_rate, gamma,
                  epsilon, target_update, device):
-        # self.action_dim = action_dim
+        self.action_dim = action_dim
 
         # TODO:这里想办法和环境的参数联系在一起，num_characters是干员列表长度，num_positions是地图的可放置方块数
-        self.num_characters = 8
-        self.num_positions = 10
-        self.num_directions = 4
+        self.num_characters, self.num_positions, self.num_directions = action_dim
 
-        # self.q_net = ConvolutionalQnet(action_dim).to(device)
         self.q_net = Qnet(state_dim, hidden_dim, self.num_characters, self.num_positions, self.num_directions).to(device)  # Q网络
 
         # 目标网络
         self.target_q_net = Qnet(state_dim, hidden_dim, self.num_characters, self.num_positions, self.num_directions).to(device)
-        # self.target_q_net = Qnet(state_dim, hidden_dim,
-        #                          self.action_dim).to(device)
-        # self.target_q_net = ConvolutionalQnet(action_dim).to(device)
 
         # 使用Adam优化器
         self.optimizer = torch.optim.Adam(self.q_net.parameters(),
@@ -124,30 +119,51 @@ class DQN:
             i = -1
             action = None
             print("开始探索行为")
-            # 场上没有干员，只能选择放置干员
+
             # 排除choice选择空列表时的报错
-            if not env['available_player_list_id'] or not env['available_position_list']:
-                i = np.random.randint(1, 3)
-                if not env['position_list_id']:
-                    i = 3
-                    # print(f"放置屏蔽！i:{i}")
-            elif not env['position_list_id']:
-                i = 0
-                # print(f"撤退/技能屏蔽！i:{i}")
-            else:
-                i = np.random.randint(0, 3)
-                # print(f"全动作随机！i:{i}")
+            action_list = [i for i in range(4)]
+            # 没有可用干员和可放置地块，不能放置
+            if not env['available_player_list_id'] or not env['available_position_list']: action_list.remove(0)
+            # 不能使用技能，技能冷却或者没有干员在场
+            if not env['skill_ready_list_id'] or not env['position_list_id']: action_list.remove(1)
+            # 没有干员在场，不能撤退
+            if not env['position_list_id']: action_list.remove(2)
+
+            i = random.choice(action_list)
 
             # 放置干员
             if i == 0:
-                action = torch.tensor([random.choice(env['available_player_list_id']), random.choice(env['available_position_list']), random.randint(0, 3)])
+                available_high_player_list = [i for i in env['available_player_list_id'] if
+                                              i in env['high_player_list_id']]
+                available_high_position_list = [i for i in env['available_position_list'] if
+                                                i in env['high_floor_list_id']]
+                available_bottom_player_list = [i for i in env['available_player_list_id'] if
+                                                i not in env['high_player_list_id']]
+                available_bottom_position_list = [i for i in env['available_position_list'] if
+                                                  i not in env['high_floor_list_id']]
+
+                action_pool = []
+                if available_high_player_list and available_high_position_list:
+                    # 放置高台
+                    action_pool.append(torch.tensor(
+                        [random.choice(available_high_player_list), random.choice(available_high_position_list),
+                         random.randint(0, 3)]))
+                elif available_bottom_player_list and available_bottom_position_list:
+                    # 放置地面
+                    action_pool.append(torch.tensor(
+                        [random.choice(available_bottom_player_list), random.choice(available_bottom_position_list),
+                         random.randint(0, 3)]))
+                action = random.choice(action_pool)
             # 使用干员技能
             elif i == 1:
                 if not env['position_list_id']:
                     time.sleep(2)
                     print(f"没有费用且场上无干员，等待2秒")
                 else:
-                    action = torch.tensor([0, random.choice(env['position_list_id']), 5])
+                    # 加入技能冷却机制
+                    available_skill_player_list = [i for i in env['position_list_id'] if
+                                                   i in env['skill_ready_list_id']]
+                    action = torch.tensor([0, random.choice(available_skill_player_list), 5])
             # 撤退干员
             elif i == 2:
                 action = torch.tensor([0, random.choice(env['position_list_id']), 6])
@@ -173,22 +189,19 @@ class DQN:
             # 动作筛选
             batchsize, num_player, num_positions, directions = place_q.shape
 
-            available_high_player_id = [i for i in env['available_player_list_id'] if i in env['high_player_list']]
+            available_high_player_id = [i for i in env['available_player_list_id'] if i in env['high_player_list_id']]
             available_high_position = [i for i in env['available_position_list'] if i in env['high_floor_list_id']]
             available_bottom_position = [i for i in env['available_position_list'] if
                                          i not in env['high_floor_list_id']]
 
             # 构造干员掩码
             player_mask = torch.ones((1, num_player, 1, 1), dtype=torch.bool, device=place_q.device)
-            # player_mask[:, env['available_player_list_id'], :, :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
             # 构造地块掩码
             position_mask = torch.ones((1, 1, num_positions, 1), dtype=torch.bool, device=place_q.device)
-            # position_mask[:, :, env['available_position_list'], :] = False  # 不需要屏蔽的地块编号对应的位置设置为 False
-
             # 合并掩码 (batchsize, num_player, num_positions, directions)
             combined_mask = player_mask | position_mask
 
-            # TODO：筛选高台和地面
+            # FIXME：还是存在高台放地面的bug
             for player_id in env['available_player_list_id']:
                 if player_id in available_high_player_id:
                     for position_id in available_high_position:
@@ -205,7 +218,10 @@ class DQN:
             # 对技能使用地动作筛选
             batchsize, num_player, isskill = skill_q.shape
             player_mask = torch.ones((1, num_player, 1), dtype=torch.bool, device=place_q.device)
-            player_mask[:, env['position_list_id'], :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
+
+            # 可使用技能的干员列表
+            skill_ready_list = [i for i in env['position_list_id'] if i in env['skill_ready_list_id']]
+            player_mask[:, skill_ready_list, :] = False  # 将不需要屏蔽的干员编号对应的位置设置为 False
             skill_q = skill_q.masked_fill(player_mask, float('-inf'))
 
             # 对撤退操作进行动作筛选
@@ -292,16 +308,17 @@ class DQN:
         with torch.no_grad():
             next_place_q, next_skill_q, next_retreat_q, next_wait_q = self.target_q_net(next_states)
             if place_count != 0:
-                target_place_q = rewards + gamma * next_place_q.max().item()
+                target_place_q = rewards + gamma * next_place_q.max().float()
             if skill_count != 0:
-                target_skill_q = rewards + gamma * next_skill_q.max().item()
+                target_skill_q = rewards + gamma * next_skill_q.max().float()
             if retreat_count != 0:
-                target_retreat_q = rewards + gamma * next_retreat_q.max().item()
+                target_retreat_q = rewards + gamma * next_retreat_q.max().float()
             if wait_count != 0:
-                target_wait_q = rewards + gamma * next_retreat_q.max().item()
+                target_wait_q = rewards + gamma * next_retreat_q.max().float()
 
         # 计算每个动作头的损失
-        total_loss = torch.tensor([0]).to(self.device)
+        total_loss = torch.tensor(0.0, device=self.device, requires_grad=True)
+
         if place_count != 0:
             total_loss += nn.MSELoss()(current_place_q, target_place_q)
         if skill_count != 0:

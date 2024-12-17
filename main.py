@@ -19,7 +19,7 @@ num_episodes = 50
 hidden_dim = 128
 gamma = 0.98
 # 探索行为阈值（0.2）
-epsilon = 0.2
+epsilon = 0.8
 target_update = 10
 buffer_size = 10000
 # 经验回放池的最低训练阈值(500)
@@ -31,8 +31,11 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
 replay_buffer = ReplayBuffer(buffer_size)
 
 num_characters, num_positions, num_directions = env.action_space.spaces[0].nvec
+
+# 如果需要添加额外的state数据，只需要修改observation_space的维度数
+state_dim = env.observation_space.nvec
 state_dim = len(env.observation_space.nvec)  # 对应 MultiDiscrete 的维度数量
-agent = DQN(state_dim, hidden_dim, lr, gamma, epsilon,
+agent = DQN(state_dim, hidden_dim, env.output_action_dim(), lr, gamma, epsilon,
             target_update, device)
 
 for i in range(10):

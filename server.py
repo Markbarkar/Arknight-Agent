@@ -16,7 +16,6 @@ class server():
         self.request_queue = Queue()
         self.response_queue = Queue()
 
-        self.agent = None
         self.replay_buffer = None
         self.hidden_dim = 128
         self.lr = 2e-3

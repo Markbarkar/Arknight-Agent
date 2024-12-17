@@ -167,7 +167,7 @@ class Cutter:
 if __name__ == '__main__':
     cutter = Cutter()
     image = pyautogui.screenshot(region=cutter.screen_parm)
-    print(cutter.end_detect(image, 121, 831, 290, 924))
+    print(cutter.end_detect(image))
 
     # cutter.image_stream_shot()
     # model = YOLO("model/train3.pt")

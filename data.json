@@ -1,0 +1,138 @@
+{
+  "players": {
+    "克洛斯": {
+      "ishigh": 1,
+      "fee": 9,
+      "freeze_time": 0,
+      "skill_time": 0
+    },
+    "卡提": {
+      "ishigh": 0,
+      "fee": 16,
+      "freeze_time": 0,
+      "skill_time": 0
+    },
+    "史都华德": {
+      "ishigh": 1,
+      "fee": 16,
+      "freeze_time": 0,
+      "skill_time": 0
+    },
+    "桃金娘": {
+      "ishigh": 0,
+      "fee": 8,
+      "freeze_time": 0,
+      "skill_time": 0
+    },
+    "泡普卡": {
+      "ishigh": 0,
+      "fee": 17,
+      "freeze_time": 0,
+      "skill_time": 0
+    },
+    "维什戴尔": {
+      "ishigh": 1,
+      "fee": 25,
+      "freeze_time": 0,
+      "skill_time": 0
+    },
+    "芬": {
+      "ishigh": 0,
+      "fee": 9,
+      "freeze_time": 0,
+      "skill_time": 0
+    },
+    "苏苏洛": {
+      "ishigh": 1,
+      "fee": 16,
+      "freeze_time": 0,
+      "skill_time": 0
+    }
+  },
+  "position_location_list": [
+    [
+      1439,
+      405
+    ],
+    [
+      1420,
+      266
+    ],
+    [
+      1289,
+      392
+    ],
+    [
+      1471,
+      529
+    ],
+    [
+      1281,
+      261
+    ],
+    [
+      1130,
+      389
+    ],
+    [
+      1321,
+      519
+    ],
+    [
+      1502,
+      671
+    ],
+    [
+      1137,
+      267
+    ],
+    [
+      985,
+      379
+    ],
+    [
+      1160,
+      520
+    ],
+    [
+      1338,
+      653
+    ],
+    [
+      1545,
+      823
+    ],
+    [
+      998,
+      263
+    ],
+    [
+      841,
+      392
+    ],
+    [
+      992,
+      518
+    ],
+    [
+      1172,
+      681
+    ],
+    [
+      1365,
+      819
+    ]
+  ],
+  "action_time": 1,
+  "protect_point": 3,
+  "high_floor_list_id": [
+    1,
+    4,
+    8,
+    10,
+    12,
+    13,
+    15,
+    17
+  ]
+}

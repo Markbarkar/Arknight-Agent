@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from enum import Enum
@@ -52,7 +53,7 @@ class ArknightEnv(Env):
     NOTE: !!只需要更新fee、position_list、player_freeze_list就可以自动更新available_player_list!!
     """
 
-    # 进入冷却状态的干员
+    # 进入部署冷却状态的干员
     @property
     def freeze_player_list_id(self):
         return [i for i, b in enumerate(self.player_freeze_list) if b]
@@ -102,18 +103,12 @@ class ArknightEnv(Env):
         self.transfer_distance_row = 100
         self.transfer_distance_col = -30
 
-        # 选择干员时出现的坐标偏移值
-        # self.select_distance_row = -250
-        # self.select_distance_col = 100
         self.skill_button_position = (1277, 677)
         self.remove_button_position = (860, 358)
 
+        # 操作时间
         self.action_time = 1
-
-        # TODO: 将干员信息配置成外部json文件
-        self.player_fee_list = [25, 17, 16, 16, 16, 9, 8, 9]
-
-        # 部署费用
+        # 部署费用（初始值设置为99方便测试）
         self.fee = 0
 
         self.reward = 0
@@ -126,29 +121,36 @@ class ArknightEnv(Env):
         # self.position_list = [{'id': 6, 'position': (1,2), 'ditection': 'DOWN'}]
         self.position_list = []
 
-        # 干员
-        self.player_list = ['维什戴尔', '泡普卡', '史都华德', '苏苏洛', '卡提', '克洛斯', '桃金娘', '芬']
-        self.high_player_list = ['维什戴尔', '史都华德', '苏苏洛', '克洛斯']
+        # TODO: 将干员信息配置成外部json文件
+        with open("data.json", 'r', encoding='utf-8') as f:
+            text = f.read()
+            self.data = json.loads(text)
+
+        self.player_fee_list = [i['fee'] for i in self.data['players'].values()]
+        self.player_list = [i for i in self.data['players']]
+        self.high_player_list = [name for name, player in self.data["players"].items() if player["ishigh"] == 1]
+
         self.num_characters = len(self.player_list)
         self.player_status_list = [True for _ in self.player_list]
 
+
+        # 每个可放置地块的坐标列表，序号越小越靠近蓝门
+        self.position_location_list = self.data['position_location_list']
         # 可放置方块数
-        self.num_positions = 10
+        self.num_positions = len(self.position_location_list)
         # 方块可放置状态
         self.position_status_list = [True for _ in range(self.num_positions)]
-        # 每个可放置地块的坐标列表，序号越小越靠近蓝门
-        self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
-                                       (1281, 261), (1130, 389), (1321, 519), (1502, 671),
-                                       (1137, 267), (985, 379), (1160, 520), (1338, 653),
-                                       (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
 
-        self.high_floor_list_id = [1, 4, 8, 10, 12, 13, 15, 17]
+        self.high_floor_list_id = self.data['high_floor_list_id']
 
+        # 技能冷却列表,技能准备好的干员id列表
+        self.skill_ready_list_id = []
         # 干员冷却状态
         self.player_freeze_list = [False for _ in self.player_list]
         # 朝向
         self.num_directions = 4
-        self.action_max_dim = (len(self.player_list), self.num_positions, 4)
+
+        # self.action_max_dim = (len(self.player_list), self.num_positions, 4)
 
         # 多重离散空间，其中一个动作可以通过sample()随机采取动作，选用tuple列举三个不同的动作，再从大的三个动作里随机选取
         self.action_space = spaces.Tuple((
@@ -182,8 +184,18 @@ class ArknightEnv(Env):
     def step(self, arg:Tuple) -> Tuple[Tensor, float, bool, bool, dict]:
         action, type = arg
         if type == 0:
-            self.place(self.player_list[action[0]], self.position_location_list[action[1]], self.action_time,
-                       ArknightEnv.DirectionType(action[2].item()))
+            name = self.player_list[action[0]]
+            position = self.position_location_list[action[1]]
+
+            # FIXME：在修复干员放置错误的bug前先限制非法操作
+            if (name in self.high_player_list and action[1] in self.high_floor_list_id) or (
+                    name not in self.high_player_list and action[1] not in self.high_floor_list_id):
+                self.place(name, position, self.action_time, ArknightEnv.DirectionType(action[2].item()))
+            else:
+                print(f"干员放置位置错误！空操作,放置干员{name}在{action[1]}、"
+                      f"high_player_list：{self.high_player_list},"
+                      f"high_floor_list_id:{self.high_floor_list_id}")
+
         elif type == 1:
             self.skill(self.player_list[action[1]])
         elif type == 2:
@@ -193,7 +205,11 @@ class ArknightEnv(Env):
             time.sleep(action[0])
 
         print(
-            f"可放置方块:{self.available_position_list}, 可放置干员列表:{self.available_player_list}，冷却干员id:{self.freeze_player_list_id}")
+            f"可放置方块:{self.available_position_list}, "
+            f"可放置干员列表:{self.available_player_list}，"
+            f"冷却干员id:{self.freeze_player_list_id},"
+            f"干员冷却列表:{self.skill_ready_list_id}"
+        )
 
         # 环境更新
         done = self.update()
@@ -221,20 +237,16 @@ class ArknightEnv(Env):
 
     # TODO:扫描地块
     def scan_floor(self):
-        self.position_location_list = [(1439, 405), (1420, 266), (1289, 392), (1471, 529),
-               (1281, 261), (1130, 389), (1321, 519), (1502, 671),
-               (1137, 267), (985, 379), (1160, 520), (1338, 653),
-               (1545, 823), (998, 263), (841, 392), (992, 518), (1172, 681), (1365, 819)]
+        pass
         return self.position_location_list
 
     def place(self, name, position, time, direction: DirectionType):
         id = self.player_list.index(name)
         left_top = (0, 0)
+        # print(f"place前费用:{self.fee}")
+        # print(f"place前可用干员列表:{self.available_player_list}")
+        # print(f"place前已放置干员列表:{self.position_list}")
         try:
-            # print(f"place前费用:{self.fee}")
-            # print(f"place前可用干员列表:{self.available_player_list}")
-            # print(f"place前已放置干员列表:{self.position_list}")
-
             player_bottom_card_list = [i for i in range(self.num_characters) if i not in self.position_list_id]
             # 在下方卡片里的序号
             transform_id = player_bottom_card_list.index(id)
@@ -258,11 +270,14 @@ class ArknightEnv(Env):
         elif direction == ArknightEnv.DirectionType.DOWN:
             pyautogui.dragRel(0, 200, duration=time)
 
-        print(f"放置干员{name}在{position},方向为{direction}")
+        print(f"放置干员{name}在{self.position_location_list.index(position)},方向为{direction}")
         self.position_list.append({'id': id, 'position': position, 'ditection': direction.value})
         # self.available_player_list.remove(self.available_player_list[transform_id])
         self.player_status_list[id] = False
         self.position_status_list[id] = False
+
+        # TODO：暂定干员放置后技能冷却完毕
+        self.skill_ready_list_id.append(id)
         self.fee -= self.player_fee_list[self.player_list.index(name)]
         # print(f"place后费用:{self.fee}")
         # print(f"place后可部署干员:{self.available_player_list}")
@@ -273,38 +288,33 @@ class ArknightEnv(Env):
         target = next((item for item in self.position_list if item.get("id") == id), None)
         target_postion = target.get("position")
         pyautogui.click(target_postion[0], target_postion[1])
-        # 这里加了选择干员时的偏移值，先保证鼠标锚定人物中心
-        # pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
-        # 这里是撤退按钮相对于干员中心的偏移值
-        # pyautogui.moveRel(-150, -150)
         pyautogui.click(self.remove_button_position[0], self.remove_button_position[1])
 
         # self.player_status_list[id] = True
-        # FIXME:加入冷却机制，更新冷却队列
-        # 放入冷却队列
+        # FIXME:加入部署冷却机制，更新冷却队列
+        # 放入部署冷却队列
         self.player_freeze_list[id] = True
         # 更新可放置方块列表
         self.position_status_list[id] = True
         # 更新已放置干员列表
         self.position_list = [i for i in self.position_list if i.get("id") != id]
-        # print(f"撤回干员{name}")
+        # 移出技能冷却列表(可能已经使用了技能)
+        if id in self.skill_ready_list_id:
+            self.skill_ready_list_id.remove(id)
+        print(f"撤回干员{name}")
         # print(f"撤退后放置的干员：{self.available_player_list}")
         # print(f"撤退后的干员状态{self.player_status_list}")
 
     def skill(self, name):
-        # FIXME：加入技能冷却机制，不能连续的进行技能使用
         id = self.player_list.index(name)
-        target = []
-        # try:
         target = next((item for item in self.position_list if item.get("id") == id), None)
         target_postion = target.get("position")
-        # except AttributeError as e:
-        #     print(f"skill错误！id:{id}, name:{name}, target:{target}")
-        #     exit()
         pyautogui.click(target_postion[0], target_postion[1])
-        # pyautogui.moveTo(target_postion[0] + self.select_distance_row, target_postion[1] + self.select_distance_col)
-        # pyautogui.moveRel(200, 170)
         pyautogui.click(self.skill_button_position[0], self.skill_button_position[1])
+
+        # 移出技能冷却列表
+        if id in self.skill_ready_list_id:
+            self.skill_ready_list_id.remove(id)
         print(f"干员技能使用{name}")
 
 
@@ -312,13 +322,14 @@ class ArknightEnv(Env):
         res = {
             'available_position_list':self.available_position_list,
             'position_list':self.position_list,
-            'action_max_dim':self.action_max_dim,
+            # 'action_max_dim':self.action_max_dim,
             'player_fee_list':self.player_fee_list,
             'fee':self.fee,
             'available_player_list_id':self.available_player_list_id,
             'position_list_id': self.position_list_id,
             'high_floor_list_id': self.high_floor_list_id,
-            'high_player_list': [self.player_list.index(i) for i in self.high_player_list]
+            'high_player_list_id': [self.player_list.index(i) for i in self.high_player_list],
+            'skill_ready_list_id': self.skill_ready_list_id
         }
         return res
 
@@ -329,8 +340,11 @@ class ArknightEnv(Env):
         while not done:
             # 模拟环境状态
             # 'position_list': self.position_list,
-            state = {"state": [self.fee, self.enemy, self.point], "reward": self.reward, "done": True,
-                     "dic": self.output_dic()}
+            state = {
+                "state": [self.fee, self.enemy, self.point],
+                "reward": self.reward, "done": True,
+                "dic": self.output_dic()
+            }
             # POST 请求发送状态数据
             response = requests.post(url, json=state)
             # print("Sending state:", state)
@@ -346,6 +360,9 @@ class ArknightEnv(Env):
         transformed = np.dot(matrix, point)
         tx, ty = transformed[0] / transformed[2], transformed[1] / transformed[2]
         return tx, ty
+
+    def output_action_dim(self):
+        return [self.num_characters, self.num_positions, self.num_directions]
 
 if __name__ == '__main__':
     env = ArknightEnv()
