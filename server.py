@@ -1,3 +1,4 @@
+import json
 import threading
 from queue import Queue
 
@@ -32,7 +33,13 @@ class server():
 
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
             "cpu")
-        self.agent = DQN(self.state_dim, self.hidden_dim, self.lr, self.gamma, self.epsilon,
+
+        with open("data.json", 'r', encoding='utf-8') as f:
+            text = f.read()
+            self.data = json.loads(text)
+            self.action_dim = [len(self.data['players']), len(self.data['position_location_list']), 4]
+
+        self.agent = DQN(self.state_dim, self.hidden_dim, self.action_dim, self.lr, self.gamma, self.epsilon,
                     self.target_update, self.device)
         self.replay_buffer = ReplayBuffer(self.buffer_size)
         self.minimal_size = 5

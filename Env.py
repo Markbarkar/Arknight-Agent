@@ -109,7 +109,7 @@ class ArknightEnv(Env):
         # 操作时间
         self.action_time = 1
         # 部署费用（初始值设置为99方便测试）
-        self.fee = 0
+        self.fee = 99
 
         self.reward = 0
         self.done = False
@@ -121,7 +121,6 @@ class ArknightEnv(Env):
         # self.position_list = [{'id': 6, 'position': (1,2), 'ditection': 'DOWN'}]
         self.position_list = []
 
-        # TODO: 将干员信息配置成外部json文件
         with open("data.json", 'r', encoding='utf-8') as f:
             text = f.read()
             self.data = json.loads(text)

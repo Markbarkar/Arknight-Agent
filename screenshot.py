@@ -75,11 +75,11 @@ class Cutter:
         return res
 
     # 连续截屏
-    def image_stream_shot(self):
+    def image_stream_shot(self, folder, name):
         print("开始截屏")
         num = 1
         while True:
-            pyautogui.screenshot(imageFilename=f"./res_image/shot_{num}.png", region=self.screen_parm)
+            pyautogui.screenshot(imageFilename=f"./{folder}/{name}_{num}.png", region=self.screen_parm)
             num += 1
             time.sleep(1)
 
@@ -166,8 +166,9 @@ class Cutter:
 
 if __name__ == '__main__':
     cutter = Cutter()
-    image = pyautogui.screenshot(region=cutter.screen_parm)
-    print(cutter.end_detect(image))
+    cutter.image_stream_shot("floor_detect_image", "shot2")
+    # image = pyautogui.screenshot(region=cutter.screen_parm)
+    # print(cutter.end_detect(image))
 
     # cutter.image_stream_shot()
     # model = YOLO("model/train3.pt")

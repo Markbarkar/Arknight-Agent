@@ -95,7 +95,6 @@ class DQN:
                  epsilon, target_update, device):
         self.action_dim = action_dim
 
-        # TODO:这里想办法和环境的参数联系在一起，num_characters是干员列表长度，num_positions是地图的可放置方块数
         self.num_characters, self.num_positions, self.num_directions = action_dim
 
         self.q_net = Qnet(state_dim, hidden_dim, self.num_characters, self.num_positions, self.num_directions).to(device)  # Q网络
@@ -326,7 +325,7 @@ class DQN:
         if retreat_count != 0:
             total_loss += retreat_count or nn.MSELoss()(current_retreat_q, target_retreat_q)
         if wait_count != 0:
-            total_loss += wait_count or nn.MSELoss()(current_wait_q, target_wait_q)
+            total_loss = total_loss + (wait_count or nn.MSELoss()(current_wait_q, target_wait_q))
 
         # loss = nn.MSELoss()(current_q_values, target_q_values)
         # 反向传播更新网络

@@ -33,7 +33,7 @@ replay_buffer = ReplayBuffer(buffer_size)
 num_characters, num_positions, num_directions = env.action_space.spaces[0].nvec
 
 # 如果需要添加额外的state数据，只需要修改observation_space的维度数
-state_dim = env.observation_space.nvec
+# state_dim = env.observation_space.nvec
 state_dim = len(env.observation_space.nvec)  # 对应 MultiDiscrete 的维度数量
 agent = DQN(state_dim, hidden_dim, env.output_action_dim(), lr, gamma, epsilon,
             target_update, device)

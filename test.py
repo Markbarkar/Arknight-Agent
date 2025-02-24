@@ -24,13 +24,14 @@ for t, i in enumerate(player_list):
         'skill_time': skill_time
     }
 
-data.update(players=res, position_location_list=position_location_list, action_time=1, protect_point=3,
-            high_floor_list_id=high_floor_list_id)
-data_json = json.dumps(data, ensure_ascii=False)
-file = open("data.json", 'w', encoding="utf8")
-file.write(data_json)
-file.close()
+# data.update(players=res, position_location_list=position_location_list, action_time=1, protect_point=3,
+#             high_floor_list_id=high_floor_list_id)
+# data_json = json.dumps(data, ensure_ascii=False)
+# file = open("data.json", 'w', encoding="utf8")
+# file.write(data_json)
+# file.close()
 
-# with open("data.json", 'r', encoding='utf-8') as f:
-#     data = json.loads(f.read())
-#     print([i['fee'] for i in data['players'].values()])
+with open("data.json", 'r', encoding='utf-8') as f:
+    data = json.loads(f.read())
+    # print([i['fee'] for i in data['players'].values()])
+    print(len(data['position_location_list']))
