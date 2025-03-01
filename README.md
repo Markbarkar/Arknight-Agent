@@ -29,4 +29,4 @@
 
 ### 调试演示
 
-![演示图](./display/pic1.png)
+![演示图片](./display/pic1.png)
