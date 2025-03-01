@@ -9,8 +9,6 @@ floor_1 = (1306, 407)
 platform_1 = (1155, 510)
 floor_2 = (1155, 400)
 
-env = ArknightEnv()
-cutter = Cutter()
 done = False
 lr = 2e-3
 # 训练轮数，也就是一局（500）
@@ -25,6 +23,8 @@ buffer_size = 10000
 # 经验回放池的最低训练阈值(500)
 minimal_size = 5
 # 经验回放池随机抽取训练数（64）
+env = ArknightEnv()
+cutter = Cutter()
 batch_size = 3
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
     "cpu")

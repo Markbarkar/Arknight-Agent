@@ -109,7 +109,7 @@ class ArknightEnv(Env):
         # 操作时间
         self.action_time = 1
         # 部署费用（初始值设置为99方便测试）
-        self.fee = 99
+        self.fee = 50
 
         self.reward = 0
         self.done = False

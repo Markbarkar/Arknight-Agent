@@ -200,6 +200,8 @@ class DQN:
             # 合并掩码 (batchsize, num_player, num_positions, directions)
             combined_mask = player_mask | position_mask
 
+            # print(combined_mask.shape)
+
             # FIXME：还是存在高台放地面的bug
             for player_id in env['available_player_list_id']:
                 if player_id in available_high_player_id:
